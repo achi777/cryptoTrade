@@ -15,7 +15,12 @@ migrate = Migrate()
 jwt = JWTManager()
 socketio = SocketIO()
 mail = Mail()
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per hour", "50 per minute"],
+    headers_enabled=True,
+    swallow_errors=True
+)
 redis_client = None
 
 
@@ -33,7 +38,18 @@ def create_app(config_name=None):
     socketio.init_app(app, cors_allowed_origins="*", async_mode='eventlet')
     mail.init_app(app)
     limiter.init_app(app)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(app, resources={r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }})
+
+    # Exempt OPTIONS requests from rate limiting
+    @app.before_request
+    def before_request():
+        from flask import request
+        if request.method == 'OPTIONS':
+            return '', 200
 
     # Initialize Redis
     global redis_client

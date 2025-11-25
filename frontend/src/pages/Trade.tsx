@@ -79,6 +79,12 @@ const Trade: React.FC = () => {
 
   const onSubmit = async (data: OrderForm) => {
     try {
+      // Ensure we have a price for limit orders
+      if (orderType === 'limit' && !data.price) {
+        toast.error('Price is required for limit orders');
+        return;
+      }
+
       const orderData = {
         pair: selectedPair,
         type: orderType,
@@ -87,6 +93,7 @@ const Trade: React.FC = () => {
         ...(orderType === 'limit' && { price: data.price }),
       };
 
+      console.log('Creating order:', orderData); // Debug log
       await dispatch(createOrder(orderData)).unwrap();
       toast.success('Order placed successfully');
       dispatch(fetchBalances());
