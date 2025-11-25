@@ -29,6 +29,8 @@ import { fetchTradingPairs, fetchOrderBook, fetchRecentTrades, setCurrentPair } 
 import { createOrder, fetchOpenOrders, cancelOrder } from '../store/slices/tradingSlice';
 import { fetchBalances } from '../store/slices/walletSlice';
 import wsService from '../services/websocket';
+import TradingChart from '../components/TradingChart';
+import api from '../services/api';
 
 interface OrderForm {
   amount: string;
@@ -48,6 +50,8 @@ const Trade: React.FC = () => {
   const [orderType, setOrderType] = useState<'limit' | 'market'>('limit');
   const [orderSide, setOrderSide] = useState<'buy' | 'sell'>('buy');
   const [selectedPair, setSelectedPair] = useState(pair || 'BTC_USDT');
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartInterval, setChartInterval] = useState('1h');
 
   const { register, handleSubmit, setValue, watch } = useForm<OrderForm>();
 
@@ -56,6 +60,25 @@ const Trade: React.FC = () => {
     dispatch(fetchBalances());
     dispatch(fetchOpenOrders());
   }, [dispatch]);
+
+  // Load chart data
+  useEffect(() => {
+    const loadChartData = async () => {
+      try {
+        const response = await api.get(`/market/klines/${selectedPair}`, {
+          params: { interval: chartInterval, limit: 100 }
+        });
+        setChartData(response.data.candles || []);
+      } catch (error) {
+        console.error('Failed to load chart data:', error);
+      }
+    };
+
+    loadChartData();
+    const interval = setInterval(loadChartData, 60000); // Refresh every minute
+
+    return () => clearInterval(interval);
+  }, [selectedPair, chartInterval]);
 
   useEffect(() => {
     if (selectedPair) {
@@ -136,6 +159,31 @@ const Trade: React.FC = () => {
               Price: {parseFloat(ticker.last_price).toFixed(2)} | 24h: {parseFloat(ticker.price_change_24h).toFixed(2)}%
             </Typography>
           )}
+        </Grid>
+
+        {/* Chart */}
+        <Grid item xs={12} md={9}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">Price Chart</Typography>
+                <ToggleButtonGroup
+                  value={chartInterval}
+                  exclusive
+                  onChange={(_, v) => v && setChartInterval(v)}
+                  size="small"
+                >
+                  <ToggleButton value="1m">1m</ToggleButton>
+                  <ToggleButton value="5m">5m</ToggleButton>
+                  <ToggleButton value="15m">15m</ToggleButton>
+                  <ToggleButton value="1h">1h</ToggleButton>
+                  <ToggleButton value="4h">4h</ToggleButton>
+                  <ToggleButton value="1d">1d</ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+              <TradingChart data={chartData} height={400} />
+            </CardContent>
+          </Card>
         </Grid>
 
         {/* Order Book */}

@@ -227,11 +227,13 @@ def cancel_order(order_id):
         unlock_amount = order.remaining_amount
         balance_currency_id = pair.base_currency_id
 
-    # Unlock funds
+    # Unlock funds - prevent negative locked balance
     balance = Balance.query.filter_by(user_id=user_id, currency_id=balance_currency_id).first()
     if balance:
-        balance.locked -= unlock_amount
-        balance.available += unlock_amount
+        # Only unlock what's actually locked
+        actual_unlock = min(unlock_amount, balance.locked)
+        balance.locked -= actual_unlock
+        balance.available += actual_unlock
         balance.update_total()
 
     order.status = OrderStatus.CANCELLED.value

@@ -217,3 +217,90 @@ def get_market_stats():
         'total_volume_24h': str(total_volume),
         'total_trades_24h': trade_count
     }), 200
+
+
+@api_v1_bp.route('/market/klines/<symbol>', methods=['GET'])
+def get_klines(symbol):
+    """Get candlestick/kline data for chart"""
+    from decimal import Decimal
+
+    pair = TradingPair.query.filter_by(symbol=symbol.upper(), is_active=True).first()
+    if not pair:
+        return jsonify({'error': 'Trading pair not found'}), 404
+
+    # Get parameters
+    interval = request.args.get('interval', '1h')  # 1m, 5m, 15m, 1h, 4h, 1d
+    limit = min(int(request.args.get('limit', 100)), 1000)
+
+    # For now, generate candles from trades
+    # In production, you'd store pre-aggregated candles
+    interval_minutes = {
+        '1m': 1,
+        '5m': 5,
+        '15m': 15,
+        '30m': 30,
+        '1h': 60,
+        '4h': 240,
+        '1d': 1440
+    }.get(interval, 60)
+
+    start_time = datetime.utcnow() - timedelta(minutes=interval_minutes * limit)
+    trades = Trade.query.filter(
+        Trade.trading_pair_id == pair.id,
+        Trade.created_at >= start_time
+    ).order_by(Trade.created_at.asc()).all()
+
+    # Aggregate trades into candles
+    candles = []
+    if trades:
+        current_candle_start = trades[0].created_at.replace(second=0, microsecond=0)
+        current_candle = {
+            'time': int(current_candle_start.timestamp()),
+            'open': float(trades[0].price),
+            'high': float(trades[0].price),
+            'low': float(trades[0].price),
+            'close': float(trades[0].price),
+            'volume': 0
+        }
+
+        for trade in trades:
+            trade_time = trade.created_at.replace(second=0, microsecond=0)
+
+            # Check if we need to start a new candle
+            time_diff = (trade_time - current_candle_start).total_seconds() / 60
+            if time_diff >= interval_minutes:
+                candles.append(current_candle)
+                current_candle_start = trade_time
+                current_candle = {
+                    'time': int(current_candle_start.timestamp()),
+                    'open': float(trade.price),
+                    'high': float(trade.price),
+                    'low': float(trade.price),
+                    'close': float(trade.price),
+                    'volume': 0
+                }
+
+            # Update current candle
+            price = float(trade.price)
+            current_candle['high'] = max(current_candle['high'], price)
+            current_candle['low'] = min(current_candle['low'], price)
+            current_candle['close'] = price
+            current_candle['volume'] += float(trade.amount)
+
+        # Add the last candle
+        if current_candle:
+            candles.append(current_candle)
+    else:
+        # No trades yet, generate a single candle with last_price
+        current_time = datetime.utcnow()
+        price = float(pair.last_price) if pair.last_price else 0
+        candles = [{
+            'time': int(current_time.timestamp()),
+            'open': price,
+            'high': price,
+            'low': price,
+            'close': price,
+            'volume': 0
+        }]
+
+    return jsonify({'candles': candles}), 200

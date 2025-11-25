@@ -20,7 +20,7 @@ import ResetPassword from './pages/ResetPassword';
 // Protected pages
 import Dashboard from './pages/Dashboard';
 import Wallets from './pages/Wallets';
-import Trade from './pages/Trade';
+import TradeBinance from './pages/TradeBinance';
 import Orders from './pages/Orders';
 import Profile from './pages/Profile';
 import KYC from './pages/KYC';
@@ -106,7 +106,7 @@ const App: React.FC = () => {
         element={
           <PrivateRoute>
             <Layout>
-              <Trade />
+              <TradeBinance />
             </Layout>
           </PrivateRoute>
         }

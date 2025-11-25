@@ -78,6 +78,8 @@ class MatchingEngine:
     def _match_limit_order(self, order: Order) -> List[Trade]:
         """Match limit order - executes at specified price or better"""
         trades = []
+        current_app.logger.info(f"=== MATCHING LIMIT ORDER ===")
+        current_app.logger.info(f"Order #{order.id}, Side={order.side}, Price={order.price}, Amount={order.amount}, Remaining={order.remaining_amount}")
 
         if order.side == OrderSide.BUY.value:
             # Match against sell orders at or below limit price
@@ -98,27 +100,43 @@ class MatchingEngine:
                 Order.price.isnot(None)
             ).order_by(Order.price.desc(), Order.created_at.asc()).all()
 
-        for counter_order in counter_orders:
+        current_app.logger.info(f"Found {len(counter_orders)} counter orders")
+        for i, counter_order in enumerate(counter_orders):
+            current_app.logger.info(f"Counter order {i+1}: #{counter_order.id}, Price={counter_order.price}, Remaining={counter_order.remaining_amount}, User={counter_order.user_id}")
+
             if order.remaining_amount <= 0:
+                current_app.logger.info(f"Order fully filled, breaking")
                 break
 
             # Execute at the maker's (counter order's) price
             trade = self._execute_trade(order, counter_order, counter_order.price)
             if trade:
+                current_app.logger.info(f"Trade created: #{trade.id}")
                 trades.append(trade)
+            else:
+                current_app.logger.warning(f"Trade NOT created for counter order #{counter_order.id}")
 
+        current_app.logger.info(f"Total trades created: {len(trades)}")
         self._finalize_order(order)
         return trades
 
     def _execute_trade(self, taker_order: Order, maker_order: Order, price: Decimal) -> Optional[Trade]:
         """Execute a trade between two orders"""
+        current_app.logger.info(f"=== EXECUTE TRADE DEBUG ===")
+        current_app.logger.info(f"Taker: Order #{taker_order.id}, Side={taker_order.side}, Remaining={taker_order.remaining_amount}")
+        current_app.logger.info(f"Maker: Order #{maker_order.id}, Side={maker_order.side}, Remaining={maker_order.remaining_amount}")
+        current_app.logger.info(f"Price: {price}")
+
         # Determine trade amount
         trade_amount = min(taker_order.remaining_amount, maker_order.remaining_amount)
+        current_app.logger.info(f"Trade amount: {trade_amount}")
 
         if trade_amount <= 0:
+            current_app.logger.warning(f"Trade amount <= 0, returning None")
             return None
 
         trade_total = trade_amount * price
+        current_app.logger.info(f"Trade total: {trade_total}")
 
         # Calculate fees
         maker_fee_rate = self._get_fee_rate('maker')
@@ -167,15 +185,24 @@ class MatchingEngine:
         self._update_avg_fill_price(maker_order, trade_amount, price)
 
         # Update balances
-        self._update_balances(trade, buyer_id, seller_id, buyer_fee, seller_fee)
+        try:
+            current_app.logger.info(f"Updating balances - Buyer: {buyer_id}, Seller: {seller_id}")
+            self._update_balances(trade, buyer_id, seller_id, buyer_fee, seller_fee)
+            current_app.logger.info(f"Balances updated successfully")
+        except Exception as e:
+            current_app.logger.error(f"Balance update failed: {e}")
+            raise
 
-        # Finalize maker order
+        # Finalize both orders
         self._finalize_order(maker_order)
+        self._finalize_order(taker_order)
+        current_app.logger.info(f"Orders finalized - Maker: {maker_order.status}, Taker: {taker_order.status}")
 
         # Update market data
         self._update_market_data(price, trade_amount)
 
         db.session.commit()
+        current_app.logger.info(f"Trade #{trade.id} committed successfully")
 
         return trade
 
