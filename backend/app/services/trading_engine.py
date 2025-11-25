@@ -207,7 +207,8 @@ class MatchingEngine:
         buyer_base_balance.update_total()
 
         # Debit buyer's locked quote currency
-        buyer_quote_balance.locked -= trade.total
+        unlock_amount = min(buyer_quote_balance.locked, trade.total)
+        buyer_quote_balance.locked -= unlock_amount
         buyer_quote_balance.update_total()
 
         # Credit seller with quote currency (minus fee)
@@ -216,7 +217,8 @@ class MatchingEngine:
         seller_quote_balance.update_total()
 
         # Debit seller's locked base currency
-        seller_base_balance.locked -= trade.amount
+        unlock_base_amount = min(seller_base_balance.locked, trade.amount)
+        seller_base_balance.locked -= unlock_base_amount
         seller_base_balance.update_total()
 
     def _update_avg_fill_price(self, order: Order, trade_amount: Decimal, price: Decimal):
