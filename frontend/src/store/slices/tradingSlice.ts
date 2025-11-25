@@ -116,6 +116,17 @@ const tradingSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
+      .addCase(fetchOrderHistory.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchOrderHistory.fulfilled, (state, action) => {
+        state.loading = false;
+        state.orderHistory = action.payload.orders || [];
+      })
+      .addCase(fetchOrderHistory.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
       .addCase(createOrder.fulfilled, (state, action) => {
         if (['open', 'partially_filled'].includes(action.payload.status)) {
           state.openOrders.unshift(action.payload);
