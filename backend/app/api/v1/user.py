@@ -96,7 +96,7 @@ def get_balances():
 
 @api_v1_bp.route('/user/kyc', methods=['GET'])
 @jwt_required()
-def get_kyc_status():
+def get_user_kyc_status():
     """Get current KYC status"""
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
