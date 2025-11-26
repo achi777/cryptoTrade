@@ -53,8 +53,9 @@ def create_order():
     except (InvalidOperation, TypeError):
         return jsonify({'error': 'Invalid amount or price'}), 400
 
-    # Validate trading pair
-    pair = TradingPair.query.filter_by(symbol=pair_symbol, is_active=True).first()
+    # Validate trading pair - convert BTC_USDT to BTC/USDT
+    pair_symbol_normalized = pair_symbol.replace('_', '/')
+    pair = TradingPair.query.filter_by(symbol=pair_symbol_normalized, is_active=True).first()
     if not pair:
         return jsonify({'error': 'Trading pair not found or inactive'}), 404
 

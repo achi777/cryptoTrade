@@ -11,7 +11,11 @@ interface User {
   profile?: {
     first_name?: string;
     last_name?: string;
+    phone?: string;
     country?: string;
+    city?: string;
+    address?: string;
+    postal_code?: string;
   };
 }
 

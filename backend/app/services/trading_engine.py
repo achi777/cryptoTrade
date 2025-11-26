@@ -13,7 +13,7 @@ from app import db, socketio
 from app.models.trading import (
     TradingPair, Order, OrderType, OrderSide, OrderStatus, Trade
 )
-from app.models.balance import Balance, Transaction, TransactionType
+from app.models.balance import Balance, Transaction, TransactionType, TransactionStatus
 from app.models.admin import FeeConfig
 
 
@@ -142,17 +142,20 @@ class MatchingEngine:
         maker_fee_rate = self._get_fee_rate('maker')
         taker_fee_rate = self._get_fee_rate('taker')
 
-        # Determine buyer/seller
+        # Determine buyer/seller and fees
+        # Fees are charged in the currency received:
+        # - Buyer receives base currency (BTC) -> fee in base currency
+        # - Seller receives quote currency (USDT) -> fee in quote currency
         if taker_order.side == OrderSide.BUY.value:
             buyer_id = taker_order.user_id
             seller_id = maker_order.user_id
-            buyer_fee = trade_total * taker_fee_rate
-            seller_fee = trade_amount * maker_fee_rate
+            buyer_fee = trade_amount * taker_fee_rate  # Fee in base currency
+            seller_fee = trade_total * maker_fee_rate  # Fee in quote currency
         else:
             buyer_id = maker_order.user_id
             seller_id = taker_order.user_id
-            buyer_fee = trade_total * maker_fee_rate
-            seller_fee = trade_amount * taker_fee_rate
+            buyer_fee = trade_amount * maker_fee_rate  # Fee in base currency
+            seller_fee = trade_total * taker_fee_rate  # Fee in quote currency
 
         # Create trade record
         trade = Trade(
@@ -216,6 +219,10 @@ class MatchingEngine:
         buyer_base_balance = Balance.query.filter_by(
             user_id=buyer_id, currency_id=base_currency_id
         ).first()
+        if not buyer_base_balance:
+            buyer_base_balance = Balance(user_id=buyer_id, currency_id=base_currency_id)
+            db.session.add(buyer_base_balance)
+
         buyer_quote_balance = Balance.query.filter_by(
             user_id=buyer_id, currency_id=quote_currency_id
         ).first()
@@ -227,26 +234,91 @@ class MatchingEngine:
         seller_quote_balance = Balance.query.filter_by(
             user_id=seller_id, currency_id=quote_currency_id
         ).first()
+        if not seller_quote_balance:
+            seller_quote_balance = Balance(user_id=seller_id, currency_id=quote_currency_id)
+            db.session.add(seller_quote_balance)
 
-        # Credit buyer with base currency (minus fee if fee is in base)
-        received_base = trade.amount - (buyer_fee if self._fee_in_base_currency() else Decimal('0'))
+        # BUYER: Remove locked quote currency (payment) and add base currency (received)
+        # Debit buyer's locked quote currency (what they paid)
+        debit_quote = min(buyer_quote_balance.locked, trade.total)
+        buyer_quote_balance.locked -= debit_quote
+        buyer_quote_balance.update_total()
+
+        # Credit buyer with base currency (what they bought, minus fee)
+        received_base = trade.amount - buyer_fee
         buyer_base_balance.available += received_base
         buyer_base_balance.update_total()
 
-        # Debit buyer's locked quote currency
-        unlock_amount = min(buyer_quote_balance.locked, trade.total)
-        buyer_quote_balance.locked -= unlock_amount
-        buyer_quote_balance.update_total()
+        # SELLER: Remove locked base currency (sold) and add quote currency (received)
+        # Debit seller's locked base currency (what they sold)
+        debit_base = min(seller_base_balance.locked, trade.amount)
+        seller_base_balance.locked -= debit_base
+        seller_base_balance.update_total()
 
-        # Credit seller with quote currency (minus fee)
-        received_quote = trade.total - (seller_fee if not self._fee_in_base_currency() else Decimal('0'))
+        # Credit seller with quote currency (what they received, minus fee)
+        received_quote = trade.total - seller_fee
         seller_quote_balance.available += received_quote
         seller_quote_balance.update_total()
 
-        # Debit seller's locked base currency
-        unlock_base_amount = min(seller_base_balance.locked, trade.amount)
-        seller_base_balance.locked -= unlock_base_amount
-        seller_base_balance.update_total()
+        # Credit admin with collected fees
+        self._collect_admin_fees(buyer_fee, seller_fee, base_currency_id, quote_currency_id)
+
+    def _collect_admin_fees(self, buyer_fee: Decimal, seller_fee: Decimal,
+                           base_currency_id: int, quote_currency_id: int):
+        """Collect trading fees to admin account"""
+        from app.models.user import User
+
+        # Get admin user (first user with is_admin=True)
+        admin = User.query.filter_by(is_admin=True).first()
+        if not admin:
+            current_app.logger.warning("No admin user found to collect fees")
+            return
+
+        # Collect buyer fee (in base currency)
+        if buyer_fee > 0:
+            admin_base_balance = Balance.query.filter_by(
+                user_id=admin.id, currency_id=base_currency_id
+            ).first()
+            if not admin_base_balance:
+                admin_base_balance = Balance(user_id=admin.id, currency_id=base_currency_id)
+                db.session.add(admin_base_balance)
+
+            admin_base_balance.available += buyer_fee
+            admin_base_balance.update_total()
+
+            # Create transaction record
+            fee_transaction = Transaction(
+                user_id=admin.id,
+                currency_id=base_currency_id,
+                type=TransactionType.FEE_COLLECTION.value,
+                amount=buyer_fee,
+                net_amount=buyer_fee,
+                status=TransactionStatus.COMPLETED.value
+            )
+            db.session.add(fee_transaction)
+
+        # Collect seller fee (in quote currency)
+        if seller_fee > 0:
+            admin_quote_balance = Balance.query.filter_by(
+                user_id=admin.id, currency_id=quote_currency_id
+            ).first()
+            if not admin_quote_balance:
+                admin_quote_balance = Balance(user_id=admin.id, currency_id=quote_currency_id)
+                db.session.add(admin_quote_balance)
+
+            admin_quote_balance.available += seller_fee
+            admin_quote_balance.update_total()
+
+            # Create transaction record
+            fee_transaction = Transaction(
+                user_id=admin.id,
+                currency_id=quote_currency_id,
+                type=TransactionType.FEE_COLLECTION.value,
+                amount=seller_fee,
+                net_amount=seller_fee,
+                status=TransactionStatus.COMPLETED.value
+            )
+            db.session.add(fee_transaction)
 
     def _update_avg_fill_price(self, order: Order, trade_amount: Decimal, price: Decimal):
         """Update order's average fill price"""

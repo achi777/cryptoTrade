@@ -21,7 +21,7 @@ def get_trading_pairs():
     }), 200
 
 
-@admin_bp.route('/trading/pairs/<int:pair_id>', methods=['PUT'])
+@admin_bp.route('/trading/pairs/<int:pair_id>', methods=['PUT', 'PATCH'])
 @admin_required
 def update_trading_pair(pair_id):
     """Update trading pair configuration"""

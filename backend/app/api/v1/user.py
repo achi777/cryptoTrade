@@ -87,10 +87,33 @@ def change_password():
 def get_balances():
     """Get user balances for all currencies"""
     user_id = get_jwt_identity()
+
+    from app.models.wallet import Currency
+    from decimal import Decimal
+
+    # Get all active currencies
+    currencies = Currency.query.filter_by(is_active=True).all()
+
+    # Get existing balances
     balances = Balance.query.filter_by(user_id=user_id).all()
+    balance_dict = {b.currency.symbol: b for b in balances}
+
+    # Build response with all currencies
+    result = []
+    for currency in currencies:
+        if currency.symbol in balance_dict:
+            result.append(balance_dict[currency.symbol].to_dict())
+        else:
+            # Return zero balance for currencies without balance records
+            result.append({
+                'currency': currency.symbol,
+                'available': '0.00000000',
+                'locked': '0.00000000',
+                'total': '0.00000000'
+            })
 
     return jsonify({
-        'balances': [b.to_dict() for b in balances]
+        'balances': result
     }), 200
 
 

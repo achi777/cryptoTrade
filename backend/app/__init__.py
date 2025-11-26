@@ -17,7 +17,7 @@ socketio = SocketIO()
 mail = Mail()
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["200 per hour", "50 per minute"],
+    default_limits=["1000 per hour", "200 per minute"],
     headers_enabled=True,
     swallow_errors=True
 )
@@ -40,7 +40,7 @@ def create_app(config_name=None):
     limiter.init_app(app)
     CORS(app, resources={r"/api/*": {
         "origins": "*",
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
     }})
 

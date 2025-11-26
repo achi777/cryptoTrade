@@ -100,6 +100,12 @@ def generate_deposit_address(wallet: Wallet) -> WalletAddress:
         address = generate_doge_address(wallet.user_id, derivation_index)
     elif network == 'xlm_mainnet':
         address, memo = generate_xlm_address(wallet.user_id, derivation_index)
+    elif network == 'xrp_mainnet':
+        address, memo = generate_xrp_address(wallet.user_id, derivation_index)
+    elif network == 'bsc_mainnet':
+        address = generate_bsc_address(wallet.user_id, derivation_index)
+    elif network == 'ada_mainnet':
+        address = generate_ada_address(wallet.user_id, derivation_index)
     else:
         raise ValueError(f"Unsupported network: {network}")
 
@@ -282,6 +288,73 @@ def generate_xlm_address(user_id: int, index: int) -> tuple:
 
     except Exception as e:
         current_app.logger.error(f"XLM address generation failed: {e}")
+        raise
+
+
+def generate_xrp_address(user_id: int, index: int) -> tuple:
+    """
+    Generate XRP address with memo/destination tag.
+
+    For XRP, typically use a single receiving address with unique destination tag per user.
+    In production, this would be a real XRP address.
+    """
+    try:
+        # Production: Use xrpl-py with real hot wallet
+        # In most cases, exchanges use one hot wallet address with unique destination tags
+
+        # Development: Generate unique addresses per user (to avoid unique constraint issues)
+        seed = f"xrp:{os.getenv('XRP_HOT_WALLET', 'dev')}:{user_id}:{index}"
+        hash_bytes = hashlib.sha256(seed.encode()).digest()
+        # XRP addresses start with 'r'
+        address = f"r{hash_bytes[:25].hex()}"
+
+        # Generate unique destination tag for this user
+        memo = str(user_id)  # Use user ID as destination tag
+
+        return address, memo
+
+    except Exception as e:
+        current_app.logger.error(f"XRP address generation failed: {e}")
+        raise
+
+
+def generate_bsc_address(user_id: int, index: int) -> str:
+    """
+    Generate BSC (Binance Smart Chain) address.
+    BSC uses same address format as Ethereum (EVM-compatible).
+
+    In production, use web3.py with HD wallet:
+    - Path: m/44'/60'/0'/0/{index} (same as Ethereum)
+    """
+    try:
+        # Development placeholder - BSC uses same format as ETH
+        seed = f"bsc:{os.getenv('BSC_XPUB', 'dev')}:{user_id}:{index}"
+        hash_bytes = hashlib.sha256(seed.encode()).digest()
+        address = f"0x{hash_bytes[:20].hex()}"
+        return address
+
+    except Exception as e:
+        current_app.logger.error(f"BSC address generation failed: {e}")
+        raise
+
+
+def generate_ada_address(user_id: int, index: int) -> str:
+    """
+    Generate Cardano (ADA) address.
+
+    In production, use cardano-python or cardano-cli.
+    - Shelley addresses start with 'addr1'
+    """
+    try:
+        # Development placeholder
+        seed = f"ada:{os.getenv('ADA_XPUB', 'dev')}:{user_id}:{index}"
+        hash_bytes = hashlib.sha256(seed.encode()).digest()
+        # ADA Shelley mainnet addresses start with 'addr1'
+        address = f"addr1{hash_bytes[:50].hex()}"
+        return address
+
+    except Exception as e:
+        current_app.logger.error(f"ADA address generation failed: {e}")
         raise
 
 

@@ -52,13 +52,15 @@ def register():
     profile = UserProfile(user_id=user.id)
     db.session.add(profile)
 
-    # Create wallets for all supported currencies
+    # Commit user and profile first
+    db.session.commit()
+
+    # Create wallets for all supported currencies after user is committed
     try:
         create_user_wallets(user.id)
     except Exception as e:
         current_app.logger.error(f"Failed to create wallets for user {user.id}: {e}")
-
-    db.session.commit()
+        # Don't fail registration if wallet creation fails
 
     # Send verification email
     try:

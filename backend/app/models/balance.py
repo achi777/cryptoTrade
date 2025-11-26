@@ -10,6 +10,7 @@ class TransactionType(str, Enum):
     TRADE_BUY = 'trade_buy'
     TRADE_SELL = 'trade_sell'
     FEE = 'fee'
+    FEE_COLLECTION = 'fee_collection'
     TRANSFER_IN = 'transfer_in'
     TRANSFER_OUT = 'transfer_out'
     MARGIN_TRANSFER_IN = 'margin_transfer_in'

@@ -76,6 +76,8 @@ class TradingPair(db.Model):
             'max_order_size': str(self.max_order_size),
             'price_precision': self.price_precision,
             'amount_precision': self.amount_precision,
+            'maker_fee': str(self.maker_fee) if self.maker_fee else None,
+            'taker_fee': str(self.taker_fee) if self.taker_fee else None,
             'last_price': str(self.last_price),
             'price_change_24h': str(self.price_change_24h),
             'high_24h': str(self.high_24h),

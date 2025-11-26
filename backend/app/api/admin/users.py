@@ -192,7 +192,13 @@ def adjust_balance(user_id):
 
     balance = Balance.query.filter_by(user_id=user_id, currency_id=currency.id).first()
     if not balance:
-        balance = Balance(user_id=user_id, currency_id=currency.id)
+        balance = Balance(
+            user_id=user_id,
+            currency_id=currency.id,
+            available=Decimal('0'),
+            locked=Decimal('0'),
+            total=Decimal('0')
+        )
         db.session.add(balance)
 
     old_balance = {

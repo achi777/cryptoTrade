@@ -2,12 +2,13 @@ from flask import request, jsonify
 from datetime import datetime, timedelta
 
 from app.api.v1 import api_v1_bp
-from app import db, redis_client
+from app import db, redis_client, limiter
 from app.models.trading import TradingPair, Order, Trade, Candle, OrderSide, OrderStatus
 import json
 
 
 @api_v1_bp.route('/market/tickers', methods=['GET'])
+@limiter.exempt
 def get_tickers():
     """Get all market tickers"""
     pairs = TradingPair.query.filter_by(is_active=True).all()
@@ -27,6 +28,7 @@ def get_tickers():
 
 
 @api_v1_bp.route('/market/ticker/<symbol>', methods=['GET'])
+@limiter.exempt
 def get_ticker(symbol):
     """Get specific market ticker"""
     pair = TradingPair.query.filter_by(symbol=symbol.upper(), is_active=True).first()
@@ -46,12 +48,15 @@ def get_ticker(symbol):
 
 
 @api_v1_bp.route('/market/orderbook/<symbol>', methods=['GET'])
+@limiter.exempt
 def get_orderbook(symbol):
     """Get order book for trading pair"""
     limit = request.args.get('limit', 50, type=int)
     limit = min(limit, 500)
 
-    pair = TradingPair.query.filter_by(symbol=symbol.upper(), is_active=True).first()
+    # Convert BTC_USDT to BTC/USDT for database query
+    symbol_normalized = symbol.upper().replace('_', '/')
+    pair = TradingPair.query.filter_by(symbol=symbol_normalized, is_active=True).first()
     if not pair:
         return jsonify({'error': 'Trading pair not found'}), 404
 
@@ -115,12 +120,15 @@ def get_orderbook(symbol):
 
 
 @api_v1_bp.route('/market/trades/<symbol>', methods=['GET'])
+@limiter.exempt
 def get_recent_trades(symbol):
     """Get recent trades for trading pair"""
     limit = request.args.get('limit', 50, type=int)
     limit = min(limit, 500)
 
-    pair = TradingPair.query.filter_by(symbol=symbol.upper(), is_active=True).first()
+    # Convert BTC_USDT to BTC/USDT for database query
+    symbol_normalized = symbol.upper().replace('_', '/')
+    pair = TradingPair.query.filter_by(symbol=symbol_normalized, is_active=True).first()
     if not pair:
         return jsonify({'error': 'Trading pair not found'}), 404
 
@@ -140,6 +148,7 @@ def get_recent_trades(symbol):
 
 
 @api_v1_bp.route('/market/candles/<symbol>', methods=['GET'])
+@limiter.exempt
 def get_candles(symbol):
     """Get OHLCV candlestick data"""
     timeframe = request.args.get('timeframe', '1h')
@@ -165,6 +174,7 @@ def get_candles(symbol):
 
 
 @api_v1_bp.route('/market/depth/<symbol>', methods=['GET'])
+@limiter.exempt
 def get_depth(symbol):
     """Get market depth (aggregated order book)"""
     limit = request.args.get('limit', 20, type=int)
@@ -201,6 +211,7 @@ def get_depth(symbol):
 
 
 @api_v1_bp.route('/market/stats', methods=['GET'])
+@limiter.exempt
 def get_market_stats():
     """Get overall market statistics"""
     pairs = TradingPair.query.filter_by(is_active=True).all()
@@ -220,11 +231,14 @@ def get_market_stats():
 
 
 @api_v1_bp.route('/market/klines/<symbol>', methods=['GET'])
+@limiter.exempt
 def get_klines(symbol):
     """Get candlestick/kline data for chart"""
     from decimal import Decimal
 
-    pair = TradingPair.query.filter_by(symbol=symbol.upper(), is_active=True).first()
+    # Convert BTC_USDT to BTC/USDT for database query
+    symbol_normalized = symbol.upper().replace('_', '/')
+    pair = TradingPair.query.filter_by(symbol=symbol_normalized, is_active=True).first()
     if not pair:
         return jsonify({'error': 'Trading pair not found'}), 404
 
