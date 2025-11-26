@@ -20,7 +20,44 @@ from app.services.wallet_service import create_user_wallets
 @api_v1_bp.route('/auth/register', methods=['POST'])
 @limiter.limit("3/minute;10/hour")  # SECURITY: Prevent account enumeration
 def register():
-    """Register a new user"""
+    """
+    Register New User
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - email
+            - password
+          properties:
+            email:
+              type: string
+              format: email
+              example: newuser@example.com
+            password:
+              type: string
+              minLength: 8
+              example: SecurePassword123
+    responses:
+      201:
+        description: Registration successful
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            user:
+              type: object
+      400:
+        description: Invalid input
+      409:
+        description: Email already registered
+    """
     data = request.get_json()
 
     if not data:
@@ -77,7 +114,48 @@ def register():
 @api_v1_bp.route('/auth/login', methods=['POST'])
 @limiter.limit("5/minute;20/hour")  # SECURITY: Brute force protection
 def login():
-    """Login user and return JWT tokens"""
+    """
+    User Login
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - email
+            - password
+          properties:
+            email:
+              type: string
+              example: user@example.com
+            password:
+              type: string
+              example: SecurePassword123
+            totp_code:
+              type: string
+              example: "123456"
+              description: Required if 2FA is enabled
+    responses:
+      200:
+        description: Login successful
+        schema:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            user:
+              type: object
+      401:
+        description: Invalid credentials or 2FA required
+      403:
+        description: Account blocked or not verified
+    """
     data = request.get_json()
 
     email = data.get('email', '').lower().strip()
@@ -126,7 +204,24 @@ def login():
 @api_v1_bp.route('/auth/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
-    """Refresh access token"""
+    """
+    Refresh Access Token
+    ---
+    tags:
+      - Authentication
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: New access token generated
+        schema:
+          type: object
+          properties:
+            access_token:
+              type: string
+      401:
+        description: Invalid or expired refresh token
+    """
     identity = get_jwt_identity()
     access_token = create_access_token(identity=identity)
     return jsonify({'access_token': access_token}), 200
@@ -135,7 +230,25 @@ def refresh():
 @api_v1_bp.route('/auth/logout', methods=['POST'])
 @jwt_required()
 def logout():
-    """Logout user by blacklisting token"""
+    """
+    Logout User
+    ---
+    tags:
+      - Authentication
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Successfully logged out
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Successfully logged out
+      401:
+        description: Unauthorized
+    """
     jwt_data = get_jwt()
     jti = jwt_data['jti']
     token_type = jwt_data['type']
@@ -156,7 +269,29 @@ def logout():
 
 @api_v1_bp.route('/auth/verify-email/<token>', methods=['GET'])
 def verify_email(token):
-    """Verify user email"""
+    """
+    Verify User Email
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: token
+        in: path
+        required: true
+        type: string
+        description: Email verification token
+    responses:
+      200:
+        description: Email verified successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Email verified successfully
+      400:
+        description: Invalid or expired verification token
+    """
     user = User.query.filter_by(verification_token=token).first()
 
     if not user:
@@ -172,7 +307,38 @@ def verify_email(token):
 @api_v1_bp.route('/auth/resend-verification', methods=['POST'])
 @limiter.limit("3/hour")
 def resend_verification():
-    """Resend verification email"""
+    """
+    Resend Verification Email
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - email
+          properties:
+            email:
+              type: string
+              format: email
+              example: user@example.com
+    responses:
+      200:
+        description: Verification link sent if email exists
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: If the email exists, a verification link has been sent
+      400:
+        description: Email already verified
+      429:
+        description: Rate limit exceeded
+    """
     data = request.get_json()
     email = data.get('email', '').lower().strip()
 
@@ -199,7 +365,36 @@ def resend_verification():
 @api_v1_bp.route('/auth/forgot-password', methods=['POST'])
 @limiter.limit("3/hour")
 def forgot_password():
-    """Send password reset email"""
+    """
+    Send Password Reset Email
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - email
+          properties:
+            email:
+              type: string
+              format: email
+              example: user@example.com
+    responses:
+      200:
+        description: Password reset link sent if email exists
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: If the email exists, a password reset link has been sent
+      429:
+        description: Rate limit exceeded
+    """
     data = request.get_json()
     email = data.get('email', '').lower().strip()
 
@@ -220,7 +415,40 @@ def forgot_password():
 
 @api_v1_bp.route('/auth/reset-password', methods=['POST'])
 def reset_password():
-    """Reset password with token"""
+    """
+    Reset Password with Token
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - token
+            - password
+          properties:
+            token:
+              type: string
+              description: Password reset token
+            password:
+              type: string
+              minLength: 8
+              example: NewPassword123
+    responses:
+      200:
+        description: Password reset successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Password reset successfully
+      400:
+        description: Invalid/expired token or password too short
+    """
     data = request.get_json()
     token = data.get('token')
     new_password = data.get('password')
@@ -250,7 +478,32 @@ def reset_password():
 @api_v1_bp.route('/auth/2fa/setup', methods=['POST'])
 @jwt_required()
 def setup_2fa():
-    """Generate 2FA secret and QR code"""
+    """
+    Generate 2FA Secret and QR Code
+    ---
+    tags:
+      - Authentication
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: 2FA setup initiated
+        schema:
+          type: object
+          properties:
+            secret:
+              type: string
+              example: JBSWY3DPEHPK3PXP
+              description: Base32 encoded secret
+            qr_code:
+              type: string
+              description: Base64 encoded QR code image
+              example: data:image/png;base64,iVBORw0KG...
+      400:
+        description: 2FA is already enabled
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -289,7 +542,40 @@ def setup_2fa():
 @api_v1_bp.route('/auth/2fa/verify', methods=['POST'])
 @jwt_required()
 def verify_2fa():
-    """Verify and enable 2FA"""
+    """
+    Verify and Enable 2FA
+    ---
+    tags:
+      - Authentication
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - code
+          properties:
+            code:
+              type: string
+              example: "123456"
+              description: 6-digit TOTP code
+    responses:
+      200:
+        description: 2FA enabled successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: 2FA enabled successfully
+      400:
+        description: Code required or 2FA not setup
+      401:
+        description: Invalid code or unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -315,7 +601,44 @@ def verify_2fa():
 @api_v1_bp.route('/auth/2fa/disable', methods=['POST'])
 @jwt_required()
 def disable_2fa():
-    """Disable 2FA"""
+    """
+    Disable 2FA
+    ---
+    tags:
+      - Authentication
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - code
+            - password
+          properties:
+            code:
+              type: string
+              example: "123456"
+              description: Current 6-digit TOTP code
+            password:
+              type: string
+              description: User password for confirmation
+    responses:
+      200:
+        description: 2FA disabled successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: 2FA disabled successfully
+      400:
+        description: Code and password required or 2FA not enabled
+      401:
+        description: Invalid password or 2FA code
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 

@@ -10,7 +10,38 @@ import json
 @api_v1_bp.route('/market/tickers', methods=['GET'])
 @limiter.exempt
 def get_tickers():
-    """Get all market tickers"""
+    """
+    Get All Market Tickers
+    ---
+    tags:
+      - Market
+    responses:
+      200:
+        description: List of all trading pair tickers
+        schema:
+          type: object
+          properties:
+            tickers:
+              type: array
+              items:
+                type: object
+                properties:
+                  symbol:
+                    type: string
+                    example: BTC/USDT
+                  last_price:
+                    type: string
+                    example: "50000.00"
+                  price_change_24h:
+                    type: string
+                    example: "2.5"
+                  high_24h:
+                    type: string
+                  low_24h:
+                    type: string
+                  volume_24h:
+                    type: string
+    """
     pairs = TradingPair.query.filter_by(is_active=True).all()
 
     tickers = []
@@ -30,7 +61,42 @@ def get_tickers():
 @api_v1_bp.route('/market/ticker/<symbol>', methods=['GET'])
 @limiter.exempt
 def get_ticker(symbol):
-    """Get specific market ticker"""
+    """
+    Get Specific Market Ticker
+    ---
+    tags:
+      - Market
+    parameters:
+      - name: symbol
+        in: path
+        required: true
+        type: string
+        description: Trading pair symbol
+        example: BTC/USDT
+    responses:
+      200:
+        description: Ticker information
+        schema:
+          type: object
+          properties:
+            ticker:
+              type: object
+              properties:
+                symbol:
+                  type: string
+                last_price:
+                  type: string
+                price_change_24h:
+                  type: string
+                high_24h:
+                  type: string
+                low_24h:
+                  type: string
+                volume_24h:
+                  type: string
+      404:
+        description: Trading pair not found
+    """
     pair = TradingPair.query.filter_by(symbol=symbol.upper(), is_active=True).first()
     if not pair:
         return jsonify({'error': 'Trading pair not found'}), 404
@@ -50,7 +116,51 @@ def get_ticker(symbol):
 @api_v1_bp.route('/market/orderbook/<symbol>', methods=['GET'])
 @limiter.exempt
 def get_orderbook(symbol):
-    """Get order book for trading pair"""
+    """
+    Get Order Book for Trading Pair
+    ---
+    tags:
+      - Market
+    parameters:
+      - name: symbol
+        in: path
+        required: true
+        type: string
+        description: Trading pair symbol (use BTC_USDT format)
+        example: BTC_USDT
+      - name: limit
+        in: query
+        type: integer
+        default: 50
+        maximum: 500
+        description: Number of order book levels
+    responses:
+      200:
+        description: Order book data
+        schema:
+          type: object
+          properties:
+            symbol:
+              type: string
+            bids:
+              type: array
+              items:
+                type: object
+                properties:
+                  price:
+                    type: string
+                  amount:
+                    type: string
+            asks:
+              type: array
+              items:
+                type: object
+            timestamp:
+              type: string
+              format: date-time
+      404:
+        description: Trading pair not found
+    """
     limit = request.args.get('limit', 50, type=int)
     limit = min(limit, 500)
 
@@ -122,7 +232,49 @@ def get_orderbook(symbol):
 @api_v1_bp.route('/market/trades/<symbol>', methods=['GET'])
 @limiter.exempt
 def get_recent_trades(symbol):
-    """Get recent trades for trading pair"""
+    """
+    Get Recent Trades for Trading Pair
+    ---
+    tags:
+      - Market
+    parameters:
+      - name: symbol
+        in: path
+        required: true
+        type: string
+        description: Trading pair symbol (use BTC_USDT format)
+        example: BTC_USDT
+      - name: limit
+        in: query
+        type: integer
+        default: 50
+        maximum: 500
+        description: Number of recent trades
+    responses:
+      200:
+        description: List of recent trades
+        schema:
+          type: object
+          properties:
+            trades:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  price:
+                    type: string
+                  amount:
+                    type: string
+                  total:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+      404:
+        description: Trading pair not found
+    """
     limit = request.args.get('limit', 50, type=int)
     limit = min(limit, 500)
 
@@ -150,7 +302,58 @@ def get_recent_trades(symbol):
 @api_v1_bp.route('/market/candles/<symbol>', methods=['GET'])
 @limiter.exempt
 def get_candles(symbol):
-    """Get OHLCV candlestick data"""
+    """
+    Get OHLCV Candlestick Data
+    ---
+    tags:
+      - Market
+    parameters:
+      - name: symbol
+        in: path
+        required: true
+        type: string
+        description: Trading pair symbol
+        example: BTC/USDT
+      - name: timeframe
+        in: query
+        type: string
+        default: "1h"
+        enum: ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]
+        description: Candle timeframe
+      - name: limit
+        in: query
+        type: integer
+        default: 100
+        maximum: 1000
+        description: Number of candles
+    responses:
+      200:
+        description: Candlestick data
+        schema:
+          type: object
+          properties:
+            candles:
+              type: array
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                  open:
+                    type: string
+                  high:
+                    type: string
+                  low:
+                    type: string
+                  close:
+                    type: string
+                  volume:
+                    type: string
+      400:
+        description: Invalid timeframe
+      404:
+        description: Trading pair not found
+    """
     timeframe = request.args.get('timeframe', '1h')
     limit = request.args.get('limit', 100, type=int)
     limit = min(limit, 1000)
@@ -176,7 +379,46 @@ def get_candles(symbol):
 @api_v1_bp.route('/market/depth/<symbol>', methods=['GET'])
 @limiter.exempt
 def get_depth(symbol):
-    """Get market depth (aggregated order book)"""
+    """
+    Get Market Depth (Aggregated Order Book)
+    ---
+    tags:
+      - Market
+    parameters:
+      - name: symbol
+        in: path
+        required: true
+        type: string
+        description: Trading pair symbol
+        example: BTC/USDT
+      - name: limit
+        in: query
+        type: integer
+        default: 20
+        description: Number of depth levels
+    responses:
+      200:
+        description: Market depth data
+        schema:
+          type: object
+          properties:
+            bids:
+              type: array
+              items:
+                type: array
+                items:
+                  type: string
+                description: [price, amount]
+              example: [["50000.00", "1.5"]]
+            asks:
+              type: array
+              items:
+                type: array
+                items:
+                  type: string
+      404:
+        description: Trading pair not found
+    """
     limit = request.args.get('limit', 20, type=int)
 
     pair = TradingPair.query.filter_by(symbol=symbol.upper(), is_active=True).first()
@@ -213,7 +455,27 @@ def get_depth(symbol):
 @api_v1_bp.route('/market/stats', methods=['GET'])
 @limiter.exempt
 def get_market_stats():
-    """Get overall market statistics"""
+    """
+    Get Overall Market Statistics
+    ---
+    tags:
+      - Market
+    responses:
+      200:
+        description: Market-wide statistics
+        schema:
+          type: object
+          properties:
+            total_pairs:
+              type: integer
+              example: 50
+            total_volume_24h:
+              type: string
+              example: "1000000.00"
+            total_trades_24h:
+              type: integer
+              example: 5000
+    """
     pairs = TradingPair.query.filter_by(is_active=True).all()
 
     total_volume = sum(float(p.volume_24h) for p in pairs)
@@ -233,7 +495,57 @@ def get_market_stats():
 @api_v1_bp.route('/market/klines/<symbol>', methods=['GET'])
 @limiter.exempt
 def get_klines(symbol):
-    """Get candlestick/kline data for chart"""
+    """
+    Get Candlestick/Kline Data for Chart
+    ---
+    tags:
+      - Market
+    parameters:
+      - name: symbol
+        in: path
+        required: true
+        type: string
+        description: Trading pair symbol (use BTC_USDT format)
+        example: BTC_USDT
+      - name: interval
+        in: query
+        type: string
+        default: "1h"
+        enum: ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+        description: Kline interval
+      - name: limit
+        in: query
+        type: integer
+        default: 100
+        maximum: 1000
+        description: Number of klines
+    responses:
+      200:
+        description: Kline/candlestick data
+        schema:
+          type: object
+          properties:
+            candles:
+              type: array
+              items:
+                type: object
+                properties:
+                  time:
+                    type: integer
+                    description: Unix timestamp
+                  open:
+                    type: number
+                  high:
+                    type: number
+                  low:
+                    type: number
+                  close:
+                    type: number
+                  volume:
+                    type: number
+      404:
+        description: Trading pair not found
+    """
     from decimal import Decimal
 
     # Convert BTC_USDT to BTC/USDT for database query

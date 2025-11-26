@@ -23,7 +23,53 @@ def allowed_file(filename):
 @api_v1_bp.route('/kyc/basic-info', methods=['POST'])
 @jwt_required()
 def submit_basic_info():
-    """Submit Level 1 KYC - Basic Information"""
+    """
+    Submit Level 1 KYC - Basic Information
+    ---
+    tags:
+      - KYC
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - firstName
+            - lastName
+            - dateOfBirth
+            - nationality
+          properties:
+            firstName:
+              type: string
+              example: John
+            lastName:
+              type: string
+              example: Doe
+            dateOfBirth:
+              type: string
+              format: date
+              example: "1990-01-01"
+            nationality:
+              type: string
+              example: USA
+    responses:
+      200:
+        description: Basic information submitted and auto-approved
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            submission:
+              type: object
+      400:
+        description: Level 1 already approved
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     data = request.get_json()
@@ -71,7 +117,62 @@ def submit_basic_info():
 @api_v1_bp.route('/kyc/id-verification', methods=['POST'])
 @jwt_required()
 def submit_id_verification():
-    """Submit Level 2 KYC - ID Verification"""
+    """
+    Submit Level 2 KYC - ID Verification
+    ---
+    tags:
+      - KYC
+    security:
+      - Bearer: []
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: id_type
+        in: formData
+        type: string
+        required: true
+        description: Type of ID document
+        example: passport
+      - name: id_number
+        in: formData
+        type: string
+        required: true
+        description: ID document number
+        example: A12345678
+      - name: id_front
+        in: formData
+        type: file
+        required: true
+        description: Front side of ID document
+      - name: id_back
+        in: formData
+        type: file
+        description: Back side of ID document (if applicable)
+      - name: selfie
+        in: formData
+        type: file
+        description: Selfie with ID document
+    responses:
+      200:
+        description: ID verification submitted for review
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            submission:
+              type: object
+            files_uploaded:
+              type: array
+              items:
+                type: string
+      400:
+        description: Level 1 not completed, already approved, or invalid files
+      401:
+        description: Unauthorized
+      500:
+        description: File processing error
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -188,7 +289,56 @@ def submit_id_verification():
 @api_v1_bp.route('/kyc/address-verification', methods=['POST'])
 @jwt_required()
 def submit_address_verification():
-    """Submit Level 3 KYC - Address Verification"""
+    """
+    Submit Level 3 KYC - Address Verification
+    ---
+    tags:
+      - KYC
+    security:
+      - Bearer: []
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: address
+        in: formData
+        type: string
+        required: true
+        example: "123 Main Street"
+      - name: city
+        in: formData
+        type: string
+        required: true
+        example: "New York"
+      - name: postal_code
+        in: formData
+        type: string
+        required: true
+        example: "10001"
+      - name: country
+        in: formData
+        type: string
+        required: true
+        example: USA
+      - name: proof_document
+        in: formData
+        type: file
+        required: true
+        description: Proof of address document (utility bill, bank statement, etc.)
+    responses:
+      200:
+        description: Address verification submitted for review
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            submission:
+              type: object
+      400:
+        description: Level 2 not completed, already approved, or missing fields
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -267,7 +417,45 @@ def submit_address_verification():
 @api_v1_bp.route('/kyc/status', methods=['GET'])
 @jwt_required()
 def get_kyc_status():
-    """Get user's KYC status"""
+    """
+    Get User's KYC Status
+    ---
+    tags:
+      - KYC
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: User's KYC status and requests
+        schema:
+          type: object
+          properties:
+            current_level:
+              type: integer
+              example: 1
+              description: Current KYC level (0-3)
+            requests:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  level:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [pending, approved, rejected]
+                  created_at:
+                    type: string
+                    format: date-time
+                  reviewed_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 

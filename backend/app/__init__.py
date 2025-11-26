@@ -8,6 +8,7 @@ from flask_cors import CORS
 from flask_mail import Mail
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flasgger import Swagger
 from redis import Redis
 
 db = SQLAlchemy()
@@ -105,6 +106,57 @@ def create_app(config_name=None):
     socketio.init_app(app, cors_allowed_origins=allowed_origins, async_mode='eventlet')
     mail.init_app(app)
     limiter.init_app(app)
+
+    # Swagger API Documentation
+    swagger_config = {
+        "headers": [],
+        "specs": [
+            {
+                "endpoint": 'apispec',
+                "route": '/apispec.json',
+                "rule_filter": lambda rule: True,
+                "model_filter": lambda tag: True,
+            }
+        ],
+        "static_url_path": "/flasgger_static",
+        "swagger_ui": True,
+        "specs_route": "/api/docs"
+    }
+
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "CryptoTrade API",
+            "description": "Professional Cryptocurrency Trading Platform API",
+            "version": "1.0.0",
+            "contact": {
+                "name": "CryptoTrade Support",
+                "email": "support@cryptotrade.com"
+            }
+        },
+        "securityDefinitions": {
+            "Bearer": {
+                "type": "apiKey",
+                "name": "Authorization",
+                "in": "header",
+                "description": "JWT Authorization header using the Bearer scheme. Example: 'Bearer {token}'"
+            }
+        },
+        "security": [
+            {"Bearer": []}
+        ],
+        "schemes": ["http", "https"],
+        "tags": [
+            {"name": "Authentication", "description": "User authentication endpoints"},
+            {"name": "User", "description": "User profile management"},
+            {"name": "Wallet", "description": "Wallet and balance management"},
+            {"name": "Trading", "description": "Trading and order management"},
+            {"name": "Market", "description": "Market data and prices"},
+            {"name": "KYC", "description": "Know Your Customer verification"}
+        ]
+    }
+
+    Swagger(app, config=swagger_config, template=swagger_template)
 
     # SECURE CORS configuration - NO wildcards in production
     CORS(app, resources={r"/api/*": {

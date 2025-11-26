@@ -17,7 +17,36 @@ from app.services.blockchain_service import validate_address, estimate_withdrawa
 @api_v1_bp.route('/wallets', methods=['GET'])
 @jwt_required()
 def get_wallets():
-    """Get all user wallets with addresses"""
+    """
+    Get All User Wallets
+    ---
+    tags:
+      - Wallet
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: List of all user wallets with addresses
+        schema:
+          type: object
+          properties:
+            wallets:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  currency:
+                    type: string
+                    example: BTC
+                  addresses:
+                    type: array
+                    items:
+                      type: object
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     wallets = Wallet.query.filter_by(user_id=user_id).all()
 
@@ -29,7 +58,42 @@ def get_wallets():
 @api_v1_bp.route('/wallets/<currency_symbol>', methods=['GET'])
 @jwt_required()
 def get_wallet(currency_symbol):
-    """Get specific wallet by currency"""
+    """
+    Get Specific Wallet by Currency
+    ---
+    tags:
+      - Wallet
+    security:
+      - Bearer: []
+    parameters:
+      - name: currency_symbol
+        in: path
+        required: true
+        type: string
+        description: Currency symbol (e.g., BTC, ETH)
+        example: BTC
+    responses:
+      200:
+        description: Wallet details with balance
+        schema:
+          type: object
+          properties:
+            wallet:
+              type: object
+            balance:
+              type: object
+              properties:
+                available:
+                  type: string
+                locked:
+                  type: string
+                total:
+                  type: string
+      404:
+        description: Currency or wallet not found
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
 
     currency = Currency.query.filter_by(symbol=currency_symbol.upper()).first()
@@ -51,7 +115,51 @@ def get_wallet(currency_symbol):
 @api_v1_bp.route('/wallets/<currency_symbol>/address', methods=['GET'])
 @jwt_required()
 def get_deposit_address(currency_symbol):
-    """Get or generate deposit address for a currency"""
+    """
+    Get or Generate Deposit Address
+    ---
+    tags:
+      - Wallet
+    security:
+      - Bearer: []
+    parameters:
+      - name: currency_symbol
+        in: path
+        required: true
+        type: string
+        description: Currency symbol (e.g., BTC, ETH)
+        example: BTC
+    responses:
+      200:
+        description: Deposit address details
+        schema:
+          type: object
+          properties:
+            address:
+              type: string
+              example: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+            memo:
+              type: string
+              nullable: true
+            currency:
+              type: string
+              example: BTC
+            network:
+              type: string
+              example: Bitcoin
+            min_deposit:
+              type: string
+              example: "0.0001"
+            confirmations_required:
+              type: integer
+              example: 3
+      404:
+        description: Currency not found or inactive
+      500:
+        description: Failed to generate deposit address
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
 
     currency = Currency.query.filter_by(symbol=currency_symbol.upper(), is_active=True).first()
@@ -85,7 +193,48 @@ def get_deposit_address(currency_symbol):
 @api_v1_bp.route('/wallets/deposits', methods=['GET'])
 @jwt_required()
 def get_deposits():
-    """Get deposit history"""
+    """
+    Get Deposit History
+    ---
+    tags:
+      - Wallet
+    security:
+      - Bearer: []
+    parameters:
+      - name: page
+        in: query
+        type: integer
+        default: 1
+        description: Page number
+      - name: per_page
+        in: query
+        type: integer
+        default: 20
+        description: Items per page
+      - name: currency
+        in: query
+        type: string
+        description: Filter by currency symbol
+        example: BTC
+    responses:
+      200:
+        description: Paginated list of deposits
+        schema:
+          type: object
+          properties:
+            deposits:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            pages:
+              type: integer
+            current_page:
+              type: integer
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
@@ -117,7 +266,67 @@ def get_deposits():
 @jwt_required()
 @limiter.limit("5/hour;20/day")  # SECURITY: Strict limits on withdrawals
 def create_withdrawal():
-    """Create withdrawal request"""
+    """
+    Create Withdrawal Request
+    ---
+    tags:
+      - Wallet
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - currency
+            - address
+            - amount
+            - totp_code
+          properties:
+            currency:
+              type: string
+              example: BTC
+            address:
+              type: string
+              example: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+            memo:
+              type: string
+              nullable: true
+            amount:
+              type: string
+              example: "0.01"
+            totp_code:
+              type: string
+              example: "123456"
+              description: 2FA code (required)
+    responses:
+      201:
+        description: Withdrawal request created
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            withdrawal:
+              type: object
+            can_process_after:
+              type: string
+              format: date-time
+            requires_approval:
+              type: boolean
+      400:
+        description: Invalid input or insufficient balance
+      401:
+        description: Invalid 2FA code
+      403:
+        description: 2FA not enabled or blacklisted address
+      404:
+        description: Currency not found
+      429:
+        description: Rate limit exceeded
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     data = request.get_json()
@@ -253,7 +462,48 @@ def create_withdrawal():
 @api_v1_bp.route('/wallets/withdrawals', methods=['GET'])
 @jwt_required()
 def get_withdrawals():
-    """Get withdrawal history"""
+    """
+    Get Withdrawal History
+    ---
+    tags:
+      - Wallet
+    security:
+      - Bearer: []
+    parameters:
+      - name: page
+        in: query
+        type: integer
+        default: 1
+        description: Page number
+      - name: per_page
+        in: query
+        type: integer
+        default: 20
+        description: Items per page
+      - name: status
+        in: query
+        type: string
+        description: Filter by status
+        enum: [pending, processing, completed, cancelled, rejected]
+    responses:
+      200:
+        description: Paginated list of withdrawals
+        schema:
+          type: object
+          properties:
+            withdrawals:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            pages:
+              type: integer
+            current_page:
+              type: integer
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
@@ -279,7 +529,33 @@ def get_withdrawals():
 @api_v1_bp.route('/wallets/withdrawals/<int:withdrawal_id>/cancel', methods=['POST'])
 @jwt_required()
 def cancel_withdrawal(withdrawal_id):
-    """Cancel pending withdrawal"""
+    """
+    Cancel Pending Withdrawal
+    ---
+    tags:
+      - Wallet
+    security:
+      - Bearer: []
+    parameters:
+      - name: withdrawal_id
+        in: path
+        required: true
+        type: integer
+        description: Withdrawal request ID
+    responses:
+      200:
+        description: Withdrawal cancelled successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Withdrawal cancelled
+      404:
+        description: Withdrawal not found or cannot be cancelled
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
 
     withdrawal = WithdrawalRequest.query.filter_by(
@@ -317,7 +593,37 @@ def cancel_withdrawal(withdrawal_id):
 
 @api_v1_bp.route('/currencies', methods=['GET'])
 def get_currencies():
-    """Get all supported currencies"""
+    """
+    Get All Supported Currencies
+    ---
+    tags:
+      - Wallet
+    responses:
+      200:
+        description: List of all active currencies
+        schema:
+          type: object
+          properties:
+            currencies:
+              type: array
+              items:
+                type: object
+                properties:
+                  symbol:
+                    type: string
+                    example: BTC
+                  name:
+                    type: string
+                    example: Bitcoin
+                  network:
+                    type: string
+                  min_deposit:
+                    type: string
+                  min_withdrawal:
+                    type: string
+                  withdrawal_fee:
+                    type: string
+    """
     currencies = Currency.query.filter_by(is_active=True).all()
     return jsonify({
         'currencies': [c.to_dict() for c in currencies]

@@ -17,7 +17,32 @@ from app.services.trading_engine import MatchingEngine
 
 @api_v1_bp.route('/trading/pairs', methods=['GET'])
 def get_trading_pairs():
-    """Get all active trading pairs"""
+    """
+    Get All Trading Pairs
+    ---
+    tags:
+      - Trading
+    responses:
+      200:
+        description: List of all active trading pairs
+        schema:
+          type: object
+          properties:
+            pairs:
+              type: array
+              items:
+                type: object
+                properties:
+                  symbol:
+                    type: string
+                    example: BTC/USDT
+                  last_price:
+                    type: string
+                  price_change_24h:
+                    type: string
+                  volume_24h:
+                    type: string
+    """
     pairs = TradingPair.query.filter_by(is_active=True).all()
     return jsonify({
         'pairs': [p.to_dict() for p in pairs]
@@ -26,7 +51,29 @@ def get_trading_pairs():
 
 @api_v1_bp.route('/trading/pairs/<symbol>', methods=['GET'])
 def get_trading_pair(symbol):
-    """Get specific trading pair info"""
+    """
+    Get Specific Trading Pair Info
+    ---
+    tags:
+      - Trading
+    parameters:
+      - name: symbol
+        in: path
+        required: true
+        type: string
+        description: Trading pair symbol
+        example: BTC/USDT
+    responses:
+      200:
+        description: Trading pair details
+        schema:
+          type: object
+          properties:
+            pair:
+              type: object
+      404:
+        description: Trading pair not found
+    """
     pair = TradingPair.query.filter_by(symbol=symbol.upper(), is_active=True).first()
     if not pair:
         return jsonify({'error': 'Trading pair not found'}), 404
@@ -38,7 +85,51 @@ def get_trading_pair(symbol):
 @jwt_required()
 @limiter.limit("100/hour")  # SECURITY: Prevent order spam
 def create_order():
-    """Create a new trading order"""
+    """
+    Create Trading Order
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - pair
+            - type
+            - side
+            - amount
+          properties:
+            pair:
+              type: string
+              example: BTC/USDT
+            type:
+              type: string
+              enum: [limit, market]
+              example: limit
+            side:
+              type: string
+              enum: [buy, sell]
+              example: buy
+            price:
+              type: string
+              example: "50000.00"
+              description: Required for limit orders
+            amount:
+              type: string
+              example: "0.01"
+    responses:
+      201:
+        description: Order created successfully
+      400:
+        description: Invalid input or insufficient balance
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     data = request.get_json()
@@ -148,7 +239,51 @@ def create_order():
 @api_v1_bp.route('/trading/orders', methods=['GET'])
 @jwt_required()
 def get_orders():
-    """Get user orders"""
+    """
+    Get User Orders
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    parameters:
+      - name: status
+        in: query
+        type: string
+        description: Filter by order status
+        enum: [open, filled, cancelled, partially_filled]
+      - name: pair
+        in: query
+        type: string
+        description: Filter by trading pair
+        example: BTC/USDT
+      - name: page
+        in: query
+        type: integer
+        default: 1
+      - name: per_page
+        in: query
+        type: integer
+        default: 20
+    responses:
+      200:
+        description: Paginated list of orders
+        schema:
+          type: object
+          properties:
+            orders:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            pages:
+              type: integer
+            current_page:
+              type: integer
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     status = request.args.get('status')
     pair = request.args.get('pair')
@@ -179,7 +314,32 @@ def get_orders():
 @api_v1_bp.route('/trading/orders/open', methods=['GET'])
 @jwt_required()
 def get_open_orders():
-    """Get user's open orders"""
+    """
+    Get User's Open Orders
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    parameters:
+      - name: pair
+        in: query
+        type: string
+        description: Filter by trading pair
+        example: BTC/USDT
+    responses:
+      200:
+        description: List of open orders
+        schema:
+          type: object
+          properties:
+            orders:
+              type: array
+              items:
+                type: object
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     pair = request.args.get('pair')
 
@@ -203,7 +363,32 @@ def get_open_orders():
 @api_v1_bp.route('/trading/orders/<int:order_id>', methods=['GET'])
 @jwt_required()
 def get_order(order_id):
-    """Get specific order"""
+    """
+    Get Specific Order
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    parameters:
+      - name: order_id
+        in: path
+        required: true
+        type: integer
+        description: Order ID
+    responses:
+      200:
+        description: Order details
+        schema:
+          type: object
+          properties:
+            order:
+              type: object
+      404:
+        description: Order not found
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     order = Order.query.filter_by(id=order_id, user_id=user_id).first()
 
@@ -216,7 +401,36 @@ def get_order(order_id):
 @api_v1_bp.route('/trading/orders/<int:order_id>/cancel', methods=['POST'])
 @jwt_required()
 def cancel_order(order_id):
-    """Cancel an open order with atomic locking"""
+    """
+    Cancel an Open Order
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    parameters:
+      - name: order_id
+        in: path
+        required: true
+        type: integer
+        description: Order ID to cancel
+    responses:
+      200:
+        description: Order cancelled successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            order:
+              type: object
+      400:
+        description: Order status changed, cannot cancel
+      404:
+        description: Order not found or cannot be cancelled
+      401:
+        description: Unauthorized
+    """
     from sqlalchemy import select
 
     user_id = get_jwt_identity()
@@ -282,7 +496,46 @@ def cancel_order(order_id):
 @api_v1_bp.route('/trading/trades', methods=['GET'])
 @jwt_required()
 def get_trades():
-    """Get user trade history"""
+    """
+    Get User Trade History
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    parameters:
+      - name: pair
+        in: query
+        type: string
+        description: Filter by trading pair
+        example: BTC/USDT
+      - name: page
+        in: query
+        type: integer
+        default: 1
+      - name: per_page
+        in: query
+        type: integer
+        default: 20
+    responses:
+      200:
+        description: Paginated list of trades
+        schema:
+          type: object
+          properties:
+            trades:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            pages:
+              type: integer
+            current_page:
+              type: integer
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     pair = request.args.get('pair')
     page = request.args.get('page', 1, type=int)
@@ -312,7 +565,63 @@ def get_trades():
 @api_v1_bp.route('/trading/convert', methods=['POST'])
 @jwt_required()
 def convert():
-    """Quick convert between currencies"""
+    """
+    Quick Convert Between Currencies
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - from
+            - to
+            - amount
+          properties:
+            from:
+              type: string
+              example: BTC
+              description: Source currency
+            to:
+              type: string
+              example: USDT
+              description: Target currency
+            amount:
+              type: string
+              example: "0.1"
+              description: Amount to convert
+    responses:
+      200:
+        description: Conversion successful
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            from:
+              type: string
+            to:
+              type: string
+            amount:
+              type: string
+            rate:
+              type: string
+            converted:
+              type: string
+            fee:
+              type: string
+      400:
+        description: Invalid amount or conversion pair not available
+      404:
+        description: Currency not found
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     data = request.get_json()
 
@@ -398,7 +707,33 @@ def convert():
 @api_v1_bp.route('/trading/margin/account', methods=['GET'])
 @jwt_required()
 def get_margin_account():
-    """Get user margin account"""
+    """
+    Get User Margin Account
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Margin account details
+        schema:
+          type: object
+          properties:
+            account:
+              type: object
+              properties:
+                collateral:
+                  type: string
+                borrowed:
+                  type: string
+                max_leverage:
+                  type: integer
+      404:
+        description: Margin account not found
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
 
     account = MarginAccount.query.filter_by(user_id=user_id).first()
@@ -411,7 +746,30 @@ def get_margin_account():
 @api_v1_bp.route('/trading/margin/account', methods=['POST'])
 @jwt_required()
 def create_margin_account():
-    """Create margin trading account"""
+    """
+    Create Margin Trading Account
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    responses:
+      201:
+        description: Margin account created
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            account:
+              type: object
+      400:
+        description: Margin account already exists
+      403:
+        description: KYC level 2 required for margin trading
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -436,7 +794,47 @@ def create_margin_account():
 @api_v1_bp.route('/trading/margin/transfer', methods=['POST'])
 @jwt_required()
 def margin_transfer():
-    """Transfer funds to/from margin account"""
+    """
+    Transfer Funds To/From Margin Account
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - direction
+            - amount
+          properties:
+            direction:
+              type: string
+              enum: [to_margin, from_margin]
+              example: to_margin
+            amount:
+              type: string
+              example: "1000.00"
+    responses:
+      200:
+        description: Transfer successful
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            account:
+              type: object
+      400:
+        description: Invalid direction, amount, or insufficient balance/margin ratio
+      404:
+        description: Margin account not found
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     data = request.get_json()
 
@@ -485,7 +883,44 @@ def margin_transfer():
 @api_v1_bp.route('/trading/margin/positions', methods=['GET'])
 @jwt_required()
 def get_margin_positions():
-    """Get open margin positions"""
+    """
+    Get Open Margin Positions
+    ---
+    tags:
+      - Trading
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: List of open margin positions
+        schema:
+          type: object
+          properties:
+            positions:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  trading_pair:
+                    type: string
+                  side:
+                    type: string
+                    enum: [long, short]
+                  entry_price:
+                    type: string
+                  amount:
+                    type: string
+                  leverage:
+                    type: integer
+                  status:
+                    type: string
+      404:
+        description: Margin account not found
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
 
     account = MarginAccount.query.filter_by(user_id=user_id).first()

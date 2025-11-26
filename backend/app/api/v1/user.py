@@ -12,7 +12,35 @@ from app.models.balance import Balance
 @api_v1_bp.route('/user/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
-    """Get current user profile"""
+    """
+    Get Current User Profile
+    ---
+    tags:
+      - User
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: User profile details
+        schema:
+          type: object
+          properties:
+            user:
+              type: object
+              properties:
+                id:
+                  type: integer
+                email:
+                  type: string
+                kyc_level:
+                  type: integer
+                two_factor_enabled:
+                  type: boolean
+      404:
+        description: User not found
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -25,7 +53,60 @@ def get_profile():
 @api_v1_bp.route('/user/profile', methods=['PUT'])
 @jwt_required()
 def update_profile():
-    """Update user profile"""
+    """
+    Update User Profile
+    ---
+    tags:
+      - User
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            first_name:
+              type: string
+              example: John
+            last_name:
+              type: string
+              example: Doe
+            phone:
+              type: string
+              example: "+1234567890"
+            country:
+              type: string
+              example: USA
+            city:
+              type: string
+              example: New York
+            address:
+              type: string
+              example: "123 Main St"
+            postal_code:
+              type: string
+              example: "10001"
+            date_of_birth:
+              type: string
+              format: date
+              example: "1990-01-01"
+    responses:
+      200:
+        description: Profile updated successfully
+        schema:
+          type: object
+          properties:
+            user:
+              type: object
+      400:
+        description: Invalid date format
+      404:
+        description: User not found
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -59,7 +140,44 @@ def update_profile():
 @api_v1_bp.route('/user/change-password', methods=['POST'])
 @jwt_required()
 def change_password():
-    """Change user password"""
+    """
+    Change User Password
+    ---
+    tags:
+      - User
+    security:
+      - Bearer: []
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - current_password
+            - new_password
+          properties:
+            current_password:
+              type: string
+              example: OldPassword123
+            new_password:
+              type: string
+              minLength: 8
+              example: NewPassword123
+    responses:
+      200:
+        description: Password changed successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Password changed successfully
+      400:
+        description: Missing fields or password too short
+      401:
+        description: Current password is incorrect
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -85,7 +203,39 @@ def change_password():
 @api_v1_bp.route('/user/balances', methods=['GET'])
 @jwt_required()
 def get_balances():
-    """Get user balances for all currencies"""
+    """
+    Get User Balances for All Currencies
+    ---
+    tags:
+      - User
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: List of all currency balances
+        schema:
+          type: object
+          properties:
+            balances:
+              type: array
+              items:
+                type: object
+                properties:
+                  currency:
+                    type: string
+                    example: BTC
+                  available:
+                    type: string
+                    example: "1.50000000"
+                  locked:
+                    type: string
+                    example: "0.10000000"
+                  total:
+                    type: string
+                    example: "1.60000000"
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
 
     from app.models.wallet import Currency
@@ -120,7 +270,36 @@ def get_balances():
 @api_v1_bp.route('/user/kyc', methods=['GET'])
 @jwt_required()
 def get_user_kyc_status():
-    """Get current KYC status"""
+    """
+    Get Current KYC Status
+    ---
+    tags:
+      - User
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: User KYC status
+        schema:
+          type: object
+          properties:
+            kyc_level:
+              type: integer
+              example: 1
+            latest_request:
+              type: object
+              nullable: true
+              properties:
+                id:
+                  type: integer
+                level:
+                  type: integer
+                status:
+                  type: string
+                  enum: [pending, approved, rejected]
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -135,7 +314,74 @@ def get_user_kyc_status():
 @api_v1_bp.route('/user/kyc/submit', methods=['POST'])
 @jwt_required()
 def submit_kyc():
-    """Submit KYC verification request"""
+    """
+    Submit KYC Verification Request
+    ---
+    tags:
+      - User
+    security:
+      - Bearer: []
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: level
+        in: formData
+        type: integer
+        required: true
+        example: 2
+        description: Target KYC level
+      - name: first_name
+        in: formData
+        type: string
+        required: true
+      - name: last_name
+        in: formData
+        type: string
+        required: true
+      - name: date_of_birth
+        in: formData
+        type: string
+        format: date
+        required: true
+        example: "1990-01-01"
+      - name: nationality
+        in: formData
+        type: string
+        required: true
+      - name: document_number
+        in: formData
+        type: string
+      - name: address
+        in: formData
+        type: string
+      - name: city
+        in: formData
+        type: string
+      - name: country
+        in: formData
+        type: string
+      - name: postal_code
+        in: formData
+        type: string
+      - name: files
+        in: formData
+        type: file
+        description: Document files (ID, selfie, etc.)
+    responses:
+      201:
+        description: KYC request submitted
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            request:
+              type: object
+      400:
+        description: Pending request exists or invalid level
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
@@ -205,7 +451,30 @@ def submit_kyc():
 @api_v1_bp.route('/user/activity', methods=['GET'])
 @jwt_required()
 def get_activity():
-    """Get user activity/login history"""
+    """
+    Get User Activity/Login History
+    ---
+    tags:
+      - User
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: User activity information
+        schema:
+          type: object
+          properties:
+            last_login:
+              type: string
+              format: date-time
+              nullable: true
+            last_login_ip:
+              type: string
+              nullable: true
+              example: "192.168.1.1"
+      401:
+        description: Unauthorized
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
 
