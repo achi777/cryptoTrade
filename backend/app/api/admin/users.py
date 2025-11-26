@@ -11,6 +11,7 @@ from app.models.user import User, UserProfile
 from app.models.balance import Balance, Transaction, TransactionType, TransactionStatus
 from app.models.trading import Order, Trade
 from app.models.admin import AuditLog
+from app.utils.security import sanitize_sql_like_pattern
 
 
 def admin_required(f):
@@ -56,7 +57,9 @@ def get_users():
     query = User.query
 
     if search:
-        query = query.filter(User.email.ilike(f'%{search}%'))
+        # SECURITY: Sanitize search input to prevent SQL injection
+        sanitized_search = sanitize_sql_like_pattern(search)
+        query = query.filter(User.email.ilike(f'%{sanitized_search}%'))
     if kyc_level is not None:
         query = query.filter_by(kyc_level=kyc_level)
     if is_blocked is not None:

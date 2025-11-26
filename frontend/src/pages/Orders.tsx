@@ -25,7 +25,16 @@ const Orders: React.FC = () => {
     }
   };
 
-  const allOrders = [...openOrders, ...orderHistory];
+  // Merge and deduplicate orders by ID
+  const allOrders = React.useMemo(() => {
+    const orderMap = new Map();
+    [...openOrders, ...orderHistory].forEach(order => {
+      if (!orderMap.has(order.id)) {
+        orderMap.set(order.id, order);
+      }
+    });
+    return Array.from(orderMap.values());
+  }, [openOrders, orderHistory]);
 
   return (
     <Box>

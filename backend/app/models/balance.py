@@ -151,6 +151,9 @@ class WithdrawalRequest(db.Model):
     reviewed_at = db.Column(db.DateTime, nullable=True)
     rejection_reason = db.Column(db.Text, nullable=True)
 
+    # SECURITY: Time-delay for withdrawal processing
+    can_process_after = db.Column(db.DateTime, nullable=True)  # Withdrawal can only be processed after this time
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

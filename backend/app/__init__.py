@@ -15,6 +15,8 @@ migrate = Migrate()
 jwt = JWTManager()
 socketio = SocketIO()
 mail = Mail()
+# NOTE: CSRF protection is handled by JWT bearer tokens (not cookies)
+# JWT tokens in Authorization headers are not vulnerable to CSRF attacks
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["1000 per hour", "200 per minute"],
@@ -24,6 +26,64 @@ limiter = Limiter(
 redis_client = None
 
 
+def validate_security_config(app):
+    """
+    Validate critical security configuration on startup
+    Prevents running with weak/default secrets in production
+    """
+    # List of weak/default secrets to reject
+    WEAK_SECRETS = [
+        'dev-secret-key',
+        'jwt-secret-key',
+        'your-secret-key',
+        'change-me',
+        'changeme',
+        'secret',
+        '12345',
+        'password'
+    ]
+
+    config = app.config
+    flask_env = os.getenv('FLASK_ENV', 'production')
+
+    # In production, enforce strong secrets
+    if flask_env == 'production':
+        # Check SECRET_KEY
+        secret_key = config.get('SECRET_KEY', '')
+        if not secret_key or len(secret_key) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters in production")
+        if secret_key.lower() in WEAK_SECRETS:
+            raise ValueError("SECRET_KEY cannot use default/weak value in production")
+
+        # Check JWT_SECRET_KEY
+        jwt_secret = config.get('JWT_SECRET_KEY', '')
+        if not jwt_secret or len(jwt_secret) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 characters in production")
+        if jwt_secret.lower() in WEAK_SECRETS:
+            raise ValueError("JWT_SECRET_KEY cannot use default/weak value in production")
+
+        # Check ENCRYPTION_KEY
+        encryption_key = config.get('ENCRYPTION_KEY')
+        if not encryption_key:
+            raise ValueError("ENCRYPTION_KEY must be set in production")
+        if len(encryption_key) < 32:
+            raise ValueError("ENCRYPTION_KEY must be at least 32 characters in production")
+
+    # In development, warn about weak secrets
+    else:
+        secret_key = config.get('SECRET_KEY', '')
+        jwt_secret = config.get('JWT_SECRET_KEY', '')
+
+        if secret_key.lower() in WEAK_SECRETS:
+            app.logger.warning("⚠️  WARNING: Using weak SECRET_KEY in development. Change for production!")
+        if jwt_secret.lower() in WEAK_SECRETS:
+            app.logger.warning("⚠️  WARNING: Using weak JWT_SECRET_KEY in development. Change for production!")
+
+        # Warn about missing ENCRYPTION_KEY in development
+        if not config.get('ENCRYPTION_KEY'):
+            app.logger.warning("⚠️  WARNING: ENCRYPTION_KEY not set. 2FA secret encryption will not work!")
+
+
 def create_app(config_name=None):
     app = Flask(__name__)
 
@@ -31,17 +91,28 @@ def create_app(config_name=None):
     config_name = config_name or os.getenv('FLASK_ENV', 'development')
     app.config.from_object(f'app.config.{config_name.capitalize()}Config')
 
+    # CRITICAL: Validate security configuration on startup
+    validate_security_config(app)
+
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    socketio.init_app(app, cors_allowed_origins="*", async_mode='eventlet')
+
+    # Configure allowed origins from environment variable
+    allowed_origins = app.config.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+
+    socketio.init_app(app, cors_allowed_origins=allowed_origins, async_mode='eventlet')
     mail.init_app(app)
     limiter.init_app(app)
+
+    # SECURE CORS configuration - NO wildcards in production
     CORS(app, resources={r"/api/*": {
-        "origins": "*",
+        "origins": allowed_origins,
         "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True,
+        "max_age": 3600
     }})
 
     # Exempt OPTIONS requests from rate limiting

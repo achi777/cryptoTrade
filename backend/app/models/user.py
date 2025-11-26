@@ -1,6 +1,7 @@
 from datetime import datetime
 from app import db
 import bcrypt
+from app.utils.encryption import encrypt_data, decrypt_data
 
 
 class User(db.Model):
@@ -15,7 +16,7 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False)
     is_blocked = db.Column(db.Boolean, default=False)
     two_factor_enabled = db.Column(db.Boolean, default=False)
-    two_factor_secret = db.Column(db.String(32), nullable=True)
+    _two_factor_secret_encrypted = db.Column('two_factor_secret', db.String(255), nullable=True)  # Encrypted storage
     kyc_level = db.Column(db.Integer, default=0)  # 0, 1, 2, 3
     verification_token = db.Column(db.String(255), nullable=True)
     password_reset_token = db.Column(db.String(255), nullable=True)
@@ -31,6 +32,25 @@ class User(db.Model):
     balances = db.relationship('Balance', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     orders = db.relationship('Order', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     kyc_requests = db.relationship('KYCRequest', backref='user', lazy='dynamic', cascade='all, delete-orphan', foreign_keys='KYCRequest.user_id')
+
+    @property
+    def two_factor_secret(self):
+        """Decrypt and return 2FA secret"""
+        if not self._two_factor_secret_encrypted:
+            return None
+        try:
+            return decrypt_data(self._two_factor_secret_encrypted)
+        except Exception:
+            # If decryption fails (e.g., key changed), return None
+            return None
+
+    @two_factor_secret.setter
+    def two_factor_secret(self, value):
+        """Encrypt and store 2FA secret"""
+        if value is None:
+            self._two_factor_secret_encrypted = None
+        else:
+            self._two_factor_secret_encrypted = encrypt_data(value)
 
     def set_password(self, password):
         """Hash and set password"""

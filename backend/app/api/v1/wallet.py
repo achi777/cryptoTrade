@@ -1,6 +1,7 @@
 from flask import request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, timedelta
 import pyotp
 
 from app.api.v1 import api_v1_bp
@@ -114,7 +115,7 @@ def get_deposits():
 
 @api_v1_bp.route('/wallets/withdraw', methods=['POST'])
 @jwt_required()
-@limiter.limit("10/hour")
+@limiter.limit("5/hour;20/day")  # SECURITY: Strict limits on withdrawals
 def create_withdrawal():
     """Create withdrawal request"""
     user_id = get_jwt_identity()
@@ -144,12 +145,7 @@ def create_withdrawal():
     if BlacklistedAddress.query.filter_by(address=to_address).first():
         return jsonify({'error': 'This address is not allowed'}), 403
 
-    # Check balance
-    balance = Balance.query.filter_by(user_id=user_id, currency_id=currency.id).first()
-    if not balance or balance.available < amount:
-        return jsonify({'error': 'Insufficient balance'}), 400
-
-    # Check minimum withdrawal
+    # Check minimum withdrawal first (before locking)
     if amount < currency.min_withdrawal:
         return jsonify({'error': f'Minimum withdrawal is {currency.min_withdrawal} {currency.symbol}'}), 400
 
@@ -160,22 +156,51 @@ def create_withdrawal():
     if net_amount <= 0:
         return jsonify({'error': 'Amount too small after fee deduction'}), 400
 
-    # Check 2FA if enabled
-    if user.two_factor_enabled:
-        if not totp_code:
-            return jsonify({'error': '2FA code required', 'requires_2fa': True}), 401
+    # Check 2FA if enabled - ENFORCE for all withdrawals
+    if not user.two_factor_enabled:
+        return jsonify({'error': 'Two-factor authentication must be enabled before making withdrawals'}), 403
 
-        totp = pyotp.TOTP(user.two_factor_secret)
-        if not totp.verify(totp_code):
-            return jsonify({'error': 'Invalid 2FA code'}), 401
+    if not totp_code:
+        return jsonify({'error': '2FA code required', 'requires_2fa': True}), 401
+
+    totp = pyotp.TOTP(user.two_factor_secret)
+    if not totp.verify(totp_code):
+        return jsonify({'error': 'Invalid 2FA code'}), 401
 
     # Check KYC level for withdrawal limits
     # (implement withdrawal limits based on KYC level)
 
-    # Lock funds
+    # Lock balance row atomically to prevent race conditions
+    from sqlalchemy import select
+
+    balance = db.session.execute(
+        select(Balance).filter_by(
+            user_id=user_id,
+            currency_id=currency.id
+        ).with_for_update()
+    ).scalar_one_or_none()
+
+    if not balance or balance.available < amount:
+        db.session.rollback()
+        return jsonify({'error': 'Insufficient balance'}), 400
+
+    # Lock funds atomically
     balance.available -= amount
     balance.locked += amount
     balance.update_total()
+
+    # SECURITY: Determine time-delay and approval requirements
+    # Large withdrawals require longer delays and manual approval
+    requires_approval = amount > Decimal('1000')  # Threshold for manual approval
+
+    if amount >= Decimal('10000'):
+        delay_minutes = 60  # 1 hour for very large withdrawals
+    elif amount >= Decimal('1000'):
+        delay_minutes = 30  # 30 minutes for large withdrawals
+    else:
+        delay_minutes = 10  # 10 minutes for normal withdrawals
+
+    can_process_after = datetime.utcnow() + timedelta(minutes=delay_minutes)
 
     # Create withdrawal request
     withdrawal = WithdrawalRequest(
@@ -187,7 +212,8 @@ def create_withdrawal():
         to_address=to_address,
         memo=memo,
         two_factor_verified=user.two_factor_enabled,
-        requires_manual_approval=amount > Decimal('1000')  # Example threshold
+        requires_manual_approval=requires_approval,
+        can_process_after=can_process_after
     )
 
     # Create transaction record
@@ -211,9 +237,16 @@ def create_withdrawal():
     withdrawal.transaction_id = transaction.id
     db.session.commit()
 
+    # Build response message
+    message = f'Withdrawal request created. Processing will begin after {delay_minutes} minutes.'
+    if requires_approval:
+        message += ' Manual approval required for large amounts.'
+
     return jsonify({
-        'message': 'Withdrawal request created',
-        'withdrawal': withdrawal.to_dict()
+        'message': message,
+        'withdrawal': withdrawal.to_dict(),
+        'can_process_after': can_process_after.isoformat(),
+        'requires_approval': requires_approval
     }), 201
 
 

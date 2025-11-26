@@ -211,37 +211,63 @@ class MatchingEngine:
 
     def _update_balances(self, trade: Trade, buyer_id: int, seller_id: int,
                          buyer_fee: Decimal, seller_fee: Decimal):
-        """Update user balances after trade execution"""
+        """Update user balances after trade execution with atomic locking"""
+        from sqlalchemy import select
+
         base_currency_id = self.pair.base_currency_id
         quote_currency_id = self.pair.quote_currency_id
 
-        # Buyer: receives base currency, pays quote currency
-        buyer_base_balance = Balance.query.filter_by(
-            user_id=buyer_id, currency_id=base_currency_id
-        ).first()
+        # Use SELECT FOR UPDATE to lock rows atomically - prevents race conditions
+        # Lock all balances involved in this trade
+        buyer_base_balance = db.session.execute(
+            select(Balance).filter_by(
+                user_id=buyer_id, currency_id=base_currency_id
+            ).with_for_update()
+        ).scalar_one_or_none()
+
         if not buyer_base_balance:
             buyer_base_balance = Balance(user_id=buyer_id, currency_id=base_currency_id)
             db.session.add(buyer_base_balance)
+            db.session.flush()  # Flush to get ID for locking
 
-        buyer_quote_balance = Balance.query.filter_by(
-            user_id=buyer_id, currency_id=quote_currency_id
-        ).first()
+        buyer_quote_balance = db.session.execute(
+            select(Balance).filter_by(
+                user_id=buyer_id, currency_id=quote_currency_id
+            ).with_for_update()
+        ).scalar_one_or_none()
 
-        # Seller: receives quote currency, pays base currency
-        seller_base_balance = Balance.query.filter_by(
-            user_id=seller_id, currency_id=base_currency_id
-        ).first()
-        seller_quote_balance = Balance.query.filter_by(
-            user_id=seller_id, currency_id=quote_currency_id
-        ).first()
+        if not buyer_quote_balance:
+            raise ValueError("Buyer quote balance not found - order should have locked funds")
+
+        seller_base_balance = db.session.execute(
+            select(Balance).filter_by(
+                user_id=seller_id, currency_id=base_currency_id
+            ).with_for_update()
+        ).scalar_one_or_none()
+
+        if not seller_base_balance:
+            raise ValueError("Seller base balance not found - order should have locked funds")
+
+        seller_quote_balance = db.session.execute(
+            select(Balance).filter_by(
+                user_id=seller_id, currency_id=quote_currency_id
+            ).with_for_update()
+        ).scalar_one_or_none()
+
         if not seller_quote_balance:
             seller_quote_balance = Balance(user_id=seller_id, currency_id=quote_currency_id)
             db.session.add(seller_quote_balance)
+            db.session.flush()
+
+        # CRITICAL: Verify sufficient locked funds before deducting
+        if buyer_quote_balance.locked < trade.total:
+            raise ValueError(f"Insufficient locked funds for buyer: has {buyer_quote_balance.locked}, needs {trade.total}")
+
+        if seller_base_balance.locked < trade.amount:
+            raise ValueError(f"Insufficient locked funds for seller: has {seller_base_balance.locked}, needs {trade.amount}")
 
         # BUYER: Remove locked quote currency (payment) and add base currency (received)
-        # Debit buyer's locked quote currency (what they paid)
-        debit_quote = min(buyer_quote_balance.locked, trade.total)
-        buyer_quote_balance.locked -= debit_quote
+        buyer_quote_balance.locked -= trade.total
         buyer_quote_balance.update_total()
 
         # Credit buyer with base currency (what they bought, minus fee)
@@ -250,9 +276,7 @@ class MatchingEngine:
         buyer_base_balance.update_total()
 
         # SELLER: Remove locked base currency (sold) and add quote currency (received)
-        # Debit seller's locked base currency (what they sold)
-        debit_base = min(seller_base_balance.locked, trade.amount)
-        seller_base_balance.locked -= debit_base
+        seller_base_balance.locked -= trade.amount
         seller_base_balance.update_total()
 
         # Credit seller with quote currency (what they received, minus fee)

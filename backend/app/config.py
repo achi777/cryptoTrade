@@ -27,6 +27,9 @@ class BaseConfig:
     JWT_BLACKLIST_ENABLED = True
     JWT_BLACKLIST_TOKEN_CHECKS = ['access', 'refresh']
 
+    # CORS - Comma-separated list of allowed origins
+    CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
+
     # Redis
     REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
@@ -44,6 +47,7 @@ class BaseConfig:
 
     # Security
     BCRYPT_LOG_ROUNDS = int(os.getenv('BCRYPT_LOG_ROUNDS', 12))
+    ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')  # For encrypting sensitive data (2FA secrets, etc.)
 
     # Platform fees
     MAKER_FEE_PERCENT = float(os.getenv('MAKER_FEE_PERCENT', 0.1))

@@ -1,4 +1,4 @@
-from flask import request, jsonify
+from flask import request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 import os
@@ -8,6 +8,7 @@ from app.api.v1 import api_v1_bp
 from app import db
 from app.models.user import User
 from app.models.kyc import KYCRequest, KYCDocument
+from app.utils.file_validation import validate_file_upload, sanitize_filename, FileValidationError
 
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
@@ -15,6 +16,7 @@ UPLOAD_FOLDER = '/app/uploads/kyc'
 
 
 def allowed_file(filename):
+    """Legacy function - kept for backward compatibility"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
@@ -117,19 +119,27 @@ def submit_id_verification():
 
     if 'id_front' in request.files:
         file = request.files['id_front']
-        if file and allowed_file(file.filename):
-            filename = secure_filename(f"{user_id}_id_front_{datetime.utcnow().timestamp()}.{file.filename.rsplit('.', 1)[1]}")
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filepath)
+        if file and file.filename:
+            try:
+                # SECURITY: Comprehensive file validation
+                validation_result = validate_file_upload(file, 'id')
+                filename = sanitize_filename(file.filename, user_id, 'id_front')
+                filepath = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(filepath)
 
-            doc = KYCDocument(
-                kyc_request_id=request_obj.id,
-                document_type='id_front',
-                file_path=filepath,
-                file_name=filename
-            )
-            db.session.add(doc)
-            files_uploaded.append('id_front')
+                doc = KYCDocument(
+                    kyc_request_id=request_obj.id,
+                    document_type='id_front',
+                    file_path=filepath,
+                    file_name=filename
+                )
+                db.session.add(doc)
+                files_uploaded.append('id_front')
+            except FileValidationError as e:
+                return jsonify({'error': f'ID front validation failed: {str(e)}'}), 400
+            except Exception as e:
+                current_app.logger.error(f"File upload error: {e}")
+                return jsonify({'error': 'Failed to process ID front image'}), 500
 
     if 'id_back' in request.files:
         file = request.files['id_back']

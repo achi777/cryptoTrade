@@ -18,7 +18,7 @@ from app.services.wallet_service import create_user_wallets
 
 
 @api_v1_bp.route('/auth/register', methods=['POST'])
-@limiter.limit("5/minute")
+@limiter.limit("3/minute;10/hour")  # SECURITY: Prevent account enumeration
 def register():
     """Register a new user"""
     data = request.get_json()
@@ -75,7 +75,7 @@ def register():
 
 
 @api_v1_bp.route('/auth/login', methods=['POST'])
-@limiter.limit("5/minute")
+@limiter.limit("5/minute;20/hour")  # SECURITY: Brute force protection
 def login():
     """Login user and return JWT tokens"""
     data = request.get_json()

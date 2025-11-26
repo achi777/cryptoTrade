@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 from app.api.v1 import api_v1_bp
-from app import db, socketio
+from app import db, socketio, limiter
 from app.models.user import User
 from app.models.wallet import Currency
 from app.models.balance import Balance, Transaction, TransactionType
@@ -36,6 +36,7 @@ def get_trading_pair(symbol):
 
 @api_v1_bp.route('/trading/orders', methods=['POST'])
 @jwt_required()
+@limiter.limit("100/hour")  # SECURITY: Prevent order spam
 def create_order():
     """Create a new trading order"""
     user_id = get_jwt_identity()
@@ -90,12 +91,21 @@ def create_order():
         required = amount
         balance_currency_id = pair.base_currency_id
 
-    # Check balance
-    balance = Balance.query.filter_by(user_id=user_id, currency_id=balance_currency_id).first()
+    # Check balance with row-level locking to prevent race conditions
+    from sqlalchemy import select
+
+    balance = db.session.execute(
+        select(Balance).filter_by(
+            user_id=user_id,
+            currency_id=balance_currency_id
+        ).with_for_update()
+    ).scalar_one_or_none()
+
     if not balance or balance.available < required:
+        db.session.rollback()
         return jsonify({'error': 'Insufficient balance'}), 400
 
-    # Lock funds
+    # Lock funds atomically
     balance.available -= required
     balance.locked += required
     balance.update_total()
@@ -206,17 +216,28 @@ def get_order(order_id):
 @api_v1_bp.route('/trading/orders/<int:order_id>/cancel', methods=['POST'])
 @jwt_required()
 def cancel_order(order_id):
-    """Cancel an open order"""
+    """Cancel an open order with atomic locking"""
+    from sqlalchemy import select
+
     user_id = get_jwt_identity()
 
-    order = Order.query.filter(
-        Order.id == order_id,
-        Order.user_id == user_id,
-        Order.status.in_([OrderStatus.OPEN.value, OrderStatus.PARTIALLY_FILLED.value])
-    ).first()
+    # Lock order row to prevent concurrent modifications
+    order = db.session.execute(
+        select(Order).filter(
+            Order.id == order_id,
+            Order.user_id == user_id,
+            Order.status.in_([OrderStatus.OPEN.value, OrderStatus.PARTIALLY_FILLED.value])
+        ).with_for_update()
+    ).scalar_one_or_none()
 
     if not order:
+        db.session.rollback()
         return jsonify({'error': 'Order not found or cannot be cancelled'}), 404
+
+    # Prevent cancellation if order is being matched
+    if order.status not in [OrderStatus.OPEN.value, OrderStatus.PARTIALLY_FILLED.value]:
+        db.session.rollback()
+        return jsonify({'error': 'Order status changed, cannot cancel'}), 400
 
     pair = order.trading_pair
 
@@ -228,8 +249,14 @@ def cancel_order(order_id):
         unlock_amount = order.remaining_amount
         balance_currency_id = pair.base_currency_id
 
-    # Unlock funds - prevent negative locked balance
-    balance = Balance.query.filter_by(user_id=user_id, currency_id=balance_currency_id).first()
+    # Lock balance row atomically
+    balance = db.session.execute(
+        select(Balance).filter_by(
+            user_id=user_id,
+            currency_id=balance_currency_id
+        ).with_for_update()
+    ).scalar_one_or_none()
+
     if balance:
         # Only unlock what's actually locked
         actual_unlock = min(unlock_amount, balance.locked)
@@ -237,6 +264,7 @@ def cancel_order(order_id):
         balance.available += actual_unlock
         balance.update_total()
 
+    # Mark order as cancelled atomically
     order.status = OrderStatus.CANCELLED.value
     order.cancelled_at = datetime.utcnow()
 
