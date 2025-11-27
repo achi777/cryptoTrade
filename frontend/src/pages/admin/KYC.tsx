@@ -5,11 +5,22 @@ import toast from 'react-hot-toast';
 
 const AdminKYC: React.FC = () => {
   const [requests, setRequests] = useState<any[]>([]);
-  useEffect(() => { adminApi.get('/kyc/requests/pending').then((res) => setRequests(res.data.requests || [])); }, []);
+  useEffect(() => {
+    adminApi.get('/kyc/requests/pending')
+      .then((res) => setRequests(res.data.requests || []))
+      .catch((err) => {
+        console.error('Failed to load KYC requests:', err);
+        toast.error(err.response?.data?.error || 'Failed to load KYC requests');
+      });
+  }, []);
   const handleAction = async (id: number, action: string) => {
-    await adminApi.post(`/kyc/requests/${id}/${action}`, action === 'reject' ? { reason: 'Document unclear' } : {});
-    setRequests(requests.filter((r) => r.id !== id));
-    toast.success(`KYC ${action}d`);
+    try {
+      await adminApi.post(`/kyc/requests/${id}/${action}`, action === 'reject' ? { reason: 'Document unclear' } : {});
+      setRequests(requests.filter((r) => r.id !== id));
+      toast.success(`KYC ${action}d`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || `Failed to ${action} KYC request`);
+    }
   };
   return (
     <Box>
