@@ -19,6 +19,7 @@ class User(db.Model):
     _two_factor_secret_encrypted = db.Column('two_factor_secret', db.String(255), nullable=True)  # Encrypted storage
     kyc_level = db.Column(db.Integer, default=0)  # 0, 1, 2, 3
     verification_token = db.Column(db.String(255), nullable=True)
+    verification_expires = db.Column(db.DateTime, nullable=True)
     password_reset_token = db.Column(db.String(255), nullable=True)
     password_reset_expires = db.Column(db.DateTime, nullable=True)
     last_login = db.Column(db.DateTime, nullable=True)

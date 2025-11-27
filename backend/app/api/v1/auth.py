@@ -81,6 +81,7 @@ def register():
     user = User(email=email)
     user.set_password(password)
     user.verification_token = secrets.token_urlsafe(32)
+    user.verification_expires = datetime.utcnow() + timedelta(hours=24)
 
     db.session.add(user)
     db.session.flush()  # Get user ID
@@ -297,8 +298,13 @@ def verify_email(token):
     if not user:
         return jsonify({'error': 'Invalid or expired verification token'}), 400
 
+    # Check if token is expired
+    if user.verification_expires and datetime.utcnow() > user.verification_expires:
+        return jsonify({'error': 'Verification token has expired. Please request a new one.'}), 400
+
     user.is_verified = True
     user.verification_token = None
+    user.verification_expires = None
     db.session.commit()
 
     return jsonify({'message': 'Email verified successfully'}), 200
@@ -352,6 +358,7 @@ def resend_verification():
         return jsonify({'error': 'Email already verified'}), 400
 
     user.verification_token = secrets.token_urlsafe(32)
+    user.verification_expires = datetime.utcnow() + timedelta(hours=24)
     db.session.commit()
 
     try:

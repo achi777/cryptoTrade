@@ -1,6 +1,5 @@
 from flask import request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from werkzeug.utils import secure_filename
 import os
 from datetime import datetime
 
@@ -11,13 +10,7 @@ from app.models.kyc import KYCRequest, KYCDocument
 from app.utils.file_validation import validate_file_upload, sanitize_filename, FileValidationError
 
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
 UPLOAD_FOLDER = '/app/uploads/kyc'
-
-
-def allowed_file(filename):
-    """Legacy function - kept for backward compatibility"""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 @api_v1_bp.route('/kyc/basic-info', methods=['POST'])
@@ -244,35 +237,51 @@ def submit_id_verification():
 
     if 'id_back' in request.files:
         file = request.files['id_back']
-        if file and allowed_file(file.filename):
-            filename = secure_filename(f"{user_id}_id_back_{datetime.utcnow().timestamp()}.{file.filename.rsplit('.', 1)[1]}")
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filepath)
+        if file and file.filename:
+            try:
+                # SECURITY: Comprehensive file validation
+                validation_result = validate_file_upload(file, 'id')
+                filename = sanitize_filename(file.filename, user_id, 'id_back')
+                filepath = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(filepath)
 
-            doc = KYCDocument(
-                kyc_request_id=request_obj.id,
-                document_type='id_back',
-                file_path=filepath,
-                file_name=filename
-            )
-            db.session.add(doc)
-            files_uploaded.append('id_back')
+                doc = KYCDocument(
+                    kyc_request_id=request_obj.id,
+                    document_type='id_back',
+                    file_path=filepath,
+                    file_name=filename
+                )
+                db.session.add(doc)
+                files_uploaded.append('id_back')
+            except FileValidationError as e:
+                return jsonify({'error': f'ID back validation failed: {str(e)}'}), 400
+            except Exception as e:
+                current_app.logger.error(f"File upload error: {e}")
+                return jsonify({'error': 'Failed to process ID back image'}), 500
 
     if 'selfie' in request.files:
         file = request.files['selfie']
-        if file and allowed_file(file.filename):
-            filename = secure_filename(f"{user_id}_selfie_{datetime.utcnow().timestamp()}.{file.filename.rsplit('.', 1)[1]}")
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filepath)
+        if file and file.filename:
+            try:
+                # SECURITY: Comprehensive file validation
+                validation_result = validate_file_upload(file, 'selfie')
+                filename = sanitize_filename(file.filename, user_id, 'selfie')
+                filepath = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(filepath)
 
-            doc = KYCDocument(
-                kyc_request_id=request_obj.id,
-                document_type='selfie',
-                file_path=filepath,
-                file_name=filename
-            )
-            db.session.add(doc)
-            files_uploaded.append('selfie')
+                doc = KYCDocument(
+                    kyc_request_id=request_obj.id,
+                    document_type='selfie',
+                    file_path=filepath,
+                    file_name=filename
+                )
+                db.session.add(doc)
+                files_uploaded.append('selfie')
+            except FileValidationError as e:
+                return jsonify({'error': f'Selfie validation failed: {str(e)}'}), 400
+            except Exception as e:
+                current_app.logger.error(f"File upload error: {e}")
+                return jsonify({'error': 'Failed to process selfie image'}), 500
 
     if not files_uploaded:
         return jsonify({'error': 'No valid files uploaded'}), 400
@@ -391,20 +400,28 @@ def submit_address_verification():
         return jsonify({'error': 'Proof of address document is required'}), 400
 
     file = request.files['proof_document']
-    if not file or not allowed_file(file.filename):
-        return jsonify({'error': 'Invalid file format'}), 400
+    if not file or not file.filename:
+        return jsonify({'error': 'Invalid file'}), 400
 
-    filename = secure_filename(f"{user_id}_address_proof_{datetime.utcnow().timestamp()}.{file.filename.rsplit('.', 1)[1]}")
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(filepath)
+    try:
+        # SECURITY: Comprehensive file validation (supports PDF for address proof)
+        validation_result = validate_file_upload(file, 'address_proof')
+        filename = sanitize_filename(file.filename, user_id, 'address_proof')
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
 
-    doc = KYCDocument(
-        kyc_request_id=request_obj.id,
-        document_type='address_proof',
-        file_path=filepath,
-        file_name=filename
-    )
-    db.session.add(doc)
+        doc = KYCDocument(
+            kyc_request_id=request_obj.id,
+            document_type='address_proof',
+            file_path=filepath,
+            file_name=filename
+        )
+        db.session.add(doc)
+    except FileValidationError as e:
+        return jsonify({'error': f'Address proof validation failed: {str(e)}'}), 400
+    except Exception as e:
+        current_app.logger.error(f"File upload error: {e}")
+        return jsonify({'error': 'Failed to process address proof document'}), 500
 
     db.session.commit()
 
