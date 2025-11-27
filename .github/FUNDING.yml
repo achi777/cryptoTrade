@@ -1,35 +1,34 @@
 # These are supported funding model platforms
 
 github: # GitHub Sponsors
-  - archilodishelidze
+  # - archilodishelidze   # enable this only after you join GitHub Sponsors
 
-patreon: # Replace with a single Patreon username
+patreon:
   # - yourpatreon
 
-open_collective: # Replace with a single Open Collective username
+open_collective:
   # - cryptotrade
 
-ko_fi: # Replace with a single Ko-fi username
+ko_fi:
   # - cryptotrade
 
-tidelift: # Replace with a single Tidelift platform-name/package-name e.g., npm/babel
+tidelift:
   # - npm/cryptotrade
 
-community_bridge: # Replace with a single Community Bridge project-name e.g., cloud-foundry
+community_bridge:
   # - cryptotrade
 
-liberapay: # Replace with a single Liberapay username
+liberapay:
   # - cryptotrade
 
-issuehunt: # Replace with a single IssueHunt username
+issuehunt:
   # - cryptotrade
 
-otechie: # Replace with a single Otechie username
+otechie:
   # - cryptotrade
 
-lfx_crowdfunding: # Replace with a single LFX Crowdfunding project-name e.g., cloud-foundry
+lfx_crowdfunding:
   # - cryptotrade
 
-custom: # Replace with up to 4 custom sponsorship URLs e.g., ['link1', 'link2']
-  # - https://www.buymeacoffee.com/cryptotrade
-  # - https://paypal.me/cryptotrade
+custom:
+  - https://paypal.me/Odishelidze
