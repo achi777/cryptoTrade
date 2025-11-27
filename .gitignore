@@ -1,43 +1,130 @@
-# Dependencies
-node_modules/
-__pycache__/
-*.pyc
-.pytest_cache/
-
-# Environment
+# Environment variables
 .env
 .env.local
-.env.*.local
+.env.development
+.env.production
+*.env
 
-# Build
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.log
 
-# IDE
-.idea/
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# Flask
+instance/
+.webassets-cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node/React
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+coverage/
+build/
+.DS_Store
+
+# IDEs
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # Logs
 *.log
 logs/
+backend/logs/
 
 # Database
 *.db
 *.sqlite
+*.sqlite3
 
 # Uploads
+backend/uploads/
 uploads/
 
-# SSL
-nginx/ssl/
+# SSL/Certificates
+*.pem
+*.key
+*.crt
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
 
-# Coverage
-coverage/
-htmlcov/
+# Backups
+*.bak
+*.backup
+*.sql
+*.dump
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# MacOS
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Testing
+.pytest_cache/
+.tox/
 .coverage
+.coverage.*
+htmlcov/
+*.cover
+.hypothesis/
 
-# Docker
-docker-compose.override.yml
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
